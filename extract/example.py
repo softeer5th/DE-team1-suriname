@@ -1,0 +1,1 @@
+from type.community_crawler import CommunityRequest, CommunityResponse
