@@ -1,6 +1,6 @@
 # DE-Team1-suriname
 
-## 팀원 소개
+## 팀원 소개!
 <table width="100%">
 <tbody><tr>
     <td width="33.33%" align="center"><b>주수민</b></td>
