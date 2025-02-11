@@ -1,4 +1,4 @@
-from typing import list, TypedDict
+from typing import List
 import pandas as pd
 from type.news_crawler import NewsRequest, NewsResponse
 from datetime import datetime
@@ -12,7 +12,7 @@ class KBSCrawler :
     def __init__(self, request : NewsRequest) :
         self.request = request
 
-    def get_news_data(self, page_num) -> list[NewsResponse]:
+    def get_news_data(self, page_num) -> List[NewsResponse]:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
