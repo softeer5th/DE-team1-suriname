@@ -42,7 +42,8 @@ class KBSCrawler :
                             title=item["title"],
                             content=item["contents"],
                             source="KBS",
-                            link=item["target_url"]
+                            link=item["target_url"],
+                            keyword=self.request["keyword"]
                         )
                         news_links.append(new_item)
             else :
@@ -56,14 +57,14 @@ class KBSCrawler :
     
     def save_to_parquet(self, news_output:List[NewsResponse], f_name:str)->None:
         if len(news_output) != 0:
-            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link"])
+            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link","keyword"])
             df.to_parquet(f_name, engine="pyarrow")
         else:
             print("news_output is empty", file=sys.stderr)
 
     def upload_s3(self, news_output:List[NewsResponse], f_name:str)->None:
             s3 = boto3.client('s3')
-            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link"])
+            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link","keyword"])
 
             # 데이터프레임을 parquet로 변환하여 메모리에서 처리
             parquet_buffer = io.BytesIO()
