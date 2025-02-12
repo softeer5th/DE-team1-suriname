@@ -349,4 +349,7 @@ pyrightconfig.json
 .history
 .ionide
 
+# CONF 파일 
+conf.py
+
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,pycharm,macos,jupyternotebooks
