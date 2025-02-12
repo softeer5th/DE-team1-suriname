@@ -1,0 +1,7 @@
+selenium
+beautifulsoup4
+pandas
+requests
+boto3
+python-dotenv
+pyarrow
