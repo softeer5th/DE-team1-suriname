@@ -352,4 +352,8 @@ pyrightconfig.json
 # CONF 파일 
 conf.py
 
+# csv, parquet 파일
+**/*.csv
+**/*.parquet
+
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,pycharm,macos,jupyternotebooks

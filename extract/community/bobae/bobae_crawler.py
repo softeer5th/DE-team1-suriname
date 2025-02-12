@@ -1,4 +1,3 @@
-import yaml
 import os
 import sys
 from datetime import datetime
@@ -10,28 +9,45 @@ from bs4 import BeautifulSoup
 import time
 import pandas as pd
 import re
+from tempfile import mkdtemp
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) # 로컬에서 테스트 할 시 주석 해제 필요
 from type.community_crawler import CommunityRequest, CommunityResponse
 
 BASE_URL = "https://www.bobaedream.co.kr"
 
 
 # 크롬 드라이버 경로 설정
-chrome_driver_path = "/Users/admin/softeer/chromedriver-mac-arm64/chromedriver" # lambda 전환 시 바꿔야 함
+chrome_driver_path = "/opt/chrome-driver/chromedriver-linux64/chromedriver" # lambda
+# chrome_driver_path = "Users/admin/softeer/chromedriver-mac-arm64/chromedriver" # 로컬
+
+# 크롬 경로 설정
+chrome_path = "/opt/chrome/chrome-linux64/chrome"
 
 # 크롬 옵션 설정
 chrome_options = Options()
-# chrome_options.add_argument("--headless")  # 헤드리스 모드
+chrome_options.binary_location = chrome_path # Chrome 실행 경로 지정
+chrome_options.add_argument("--headless")  # 헤드리스 모드
 chrome_options.add_argument("--disable-gpu")  # GPU 비활성화
 chrome_options.add_argument("--window-size=1920x1080")  # 화면 크기 설정
 chrome_options.add_argument("--no-sandbox")  # 샌드박스 비활성화
 chrome_options.add_argument("--disable-dev-shm-usage")  # /dev/shm 사용 비활성화
+chrome_options.add_argument("--disable-dev-tools")
+chrome_options.add_argument("--no-zygote")
+chrome_options.add_argument("--single-process")
+chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
+chrome_options.add_argument(f"--data-path={mkdtemp()}")
+chrome_options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+chrome_options.add_argument("--remote-debugging-pipe")
+chrome_options.add_argument("--verbose")
 
 
 class BobaeCrawler:
     def __init__(self, request: CommunityRequest):
         self.request = request
+        self.start_time = request["start_time"]
+        self.end_time = request["end_time"]
+        self.keyword = request["keyword"]
 
     def init_driver(self):
         service = Service(chrome_driver_path) # lambda 전환 시 바꿔야 함
@@ -62,9 +78,9 @@ class BobaeCrawler:
                 likeCount = int(likeCount_str.replace(',', ''))
                 post_time = datetime.strptime(date_time_match.group(1) + ' ' + date_time_match.group(2), "%Y.%m.%d %H:%M")
 
-                if post_time < request['start_time']:
+                if post_time < self.start_time:
                     return 'STOP' # 시작 날짜 이전의 게시물 무시
-                if not (request['start_time'] <= post_time <= request['end_time']):
+                if not (self.start_time <= post_time <= self.end_time):
                     return None # 지정된 날짜 범위 밖의 게시물 무시
 
             comments = post_soup.find_all('dd', {'id': lambda x: x and x.startswith('small_cmt_')})
@@ -77,7 +93,7 @@ class BobaeCrawler:
                 comment=comment,
                 viewCount=viewCount,
                 likeCount=likeCount,
-                source='보배드림',
+                source='bobaedream',
                 link=post_url
             )
         except TimeoutException:
@@ -109,14 +125,12 @@ class BobaeCrawler:
         page_source = driver.page_source
         driver.quit()
         article_data_list = self.extract_articles_from_page(page_source)
-        return [(post_url, title, request['start_time'], request['end_time']) for post_url, title in article_data_list]
+        return [(post_url, title, self.start_time, self.end_time) for post_url, title in article_data_list]
     
     def save_to_csv(self, request, dataframe, result_dir):
-        result_file = os.path.join(result_dir, f'bobaedream_{request['keyword']}_Extract_Result.csv')
-        if os.path.exists(result_file):
-            dataframe.to_csv(result_file, mode='a', header=False, index=False, encoding='utf-8-sig')
-        else:
-            dataframe.to_csv(result_file, index=False, encoding='utf-8-sig')
+        result_file = os.path.join(result_dir, f'{self.start_time}_{self.end_time}_bobaedream_{self.keyword}.csv')
+        dataframe.to_csv(result_file, index=False, encoding='utf-8-sig')
+            
 
  
 
