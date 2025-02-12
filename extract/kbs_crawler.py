@@ -33,11 +33,6 @@ class KBSCrawler :
                     # service_time을 datetime 형식으로 파싱
                     service_time = datetime.strptime(item["service_time"], "%Y%m%d %H%M%S")
 
-                    # print("---------")
-                    # print(self.request["start_time"])
-                    # print(service_time)
-                    # print(self.request["end_time"])
-
                     if self.request["start_time"] <= service_time <= self.request["end_time"] :
                         new_item = NewsResponse(
                             post_time = service_time,
