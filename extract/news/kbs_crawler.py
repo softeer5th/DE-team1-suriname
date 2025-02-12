@@ -1,9 +1,12 @@
+import io
 from typing import List
 import pandas as pd
 from type.news_crawler import NewsRequest, NewsResponse
 from datetime import datetime
 import sys
 import requests
+import boto3
+from conf import BUCKET_NAME
 
 # Todo
 # parquet 저장
@@ -50,6 +53,31 @@ class KBSCrawler :
             return []
 
         return news_links
+    
+    def save_to_parquet(self, news_output:List[NewsResponse], f_name:str)->None:
+        if len(news_output) != 0:
+            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link"])
+            df.to_parquet(f_name, engine="pyarrow")
+        else:
+            print("news_output is empty", file=sys.stderr)
+
+    def upload_s3(self, news_output:List[NewsResponse], f_name:str)->None:
+            s3 = boto3.client('s3')
+            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link"])
+
+            # 데이터프레임을 parquet로 변환하여 메모리에서 처리
+            parquet_buffer = io.BytesIO()
+            df.to_parquet(parquet_buffer, engine="pyarrow")
+            parquet_buffer.seek(0)
+
+            try:
+                s3.upload_fileobj(Fileobj=parquet_buffer, Bucket=BUCKET_NAME, Key=f_name)
+                print(
+                    f"[KBS] {len(df)} post are crawled.\n"
+                    + f"[KBS] The data is successfully loaded at [{BUCKET_NAME}:{f_name}].\n"
+                )
+            except Exception as e:
+                print("Error : {e}".format(e = e))
                  
     def run(self) :
         page_num = 1
@@ -60,26 +88,30 @@ class KBSCrawler :
                 break 
             news_list.extend(news_data_list) 
             page_num += 1
-        df = pd.DataFrame(news_list, columns=["post_time", "title", "content", "source", "link"])
-        df.to_csv('data.csv')
 
-if __name__ == "__main__":
-    if len(sys.argv) == 4:
-        keyword = sys.argv[1]
-        start_time_str = sys.argv[2]
-        end_time_str = sys.argv[3]
+        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}_KBS_{self.request["keyword"]}.parquet'
+        self.upload_s3(news_list, f_name)
 
-        start_time = datetime.strptime(start_time_str, "%Y-%m-%dT%H:%M")
-        end_time = datetime.strptime(end_time_str, "%Y-%m-%dT%H:%M")
+        # 로컬용.
+        # self.save_to_parquet(news_list, f_name)
 
-        request : NewsRequest = {
-            "keyword": keyword,
-            "start_time": start_time,  
-            "end_time": end_time 
-        }
+# if __name__ == "__main__":
+#     if len(sys.argv) == 4:
+#         keyword = sys.argv[1]
+#         start_time_str = sys.argv[2]
+#         end_time_str = sys.argv[3]
 
-        kbs_crawler = KBSCrawler(request)
-        kbs_crawler.run()
-    else : 
-        print("Error : Missing Arguments | python kbs_crawler.py <keyword> <start_time> <end_time>")
+#         start_time = datetime.strptime(start_time_str, "%Y-%m-%dT%H:%M")
+#         end_time = datetime.strptime(end_time_str, "%Y-%m-%dT%H:%M")
+
+#         request : NewsRequest = {
+#             "keyword": keyword,
+#             "start_time": start_time,  
+#             "end_time": end_time 
+#         }
+
+#         kbs_crawler = KBSCrawler(request)
+#         kbs_crawler.run()
+#     else : 
+#         print("Error : Missing Arguments | python kbs_crawler.py <keyword> <start_time> <end_time>")
 
