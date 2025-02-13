@@ -64,19 +64,20 @@ class SBSCrawler:
                 news_date = datetime \
                             .strptime(news_date_str, "%Y.%m.%d %H:%M")
                 print(news_date)
-                news_body = " ".join(
-                    news_soup.select_one("div.main_text > div.text_area").text.split()
-                )
-                news_output.append(
-                    NewsResponse(
-                        post_time=news_date,
-                        title=news_title,
-                        content=news_body,
-                        source=self.NEWS_TAG,
-                        link=news_url,
-                        keyword=self.request["keyword"]
+                if self.request['start_time'] <= news_date <= self.request['end_time']:
+                    news_body = " ".join(
+                        news_soup.select_one("div.main_text > div.text_area").text.split()
                     )
-                )
+                    news_output.append(
+                        NewsResponse(
+                            post_time=news_date,
+                            title=news_title,
+                            content=news_body,
+                            source=self.NEWS_TAG,
+                            link=news_url,
+                            keyword=self.request["keyword"]
+                        )
+                    )
         return news_output
 
     def save_to_parquet(self, news_output:List[NewsResponse], f_name:str)->None:
