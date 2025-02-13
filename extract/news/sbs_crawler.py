@@ -64,7 +64,7 @@ class SBSCrawler:
                 news_date = datetime \
                             .strptime(news_date_str, "%Y.%m.%d %H:%M")
                 print(news_date)
-                if self.request['start_time'] <= news_date <= self.request['end_time']:
+                if self.request['start_time'] <= news_date < self.request['end_time']:
                     news_body = " ".join(
                         news_soup.select_one("div.main_text > div.text_area").text.split()
                     )
