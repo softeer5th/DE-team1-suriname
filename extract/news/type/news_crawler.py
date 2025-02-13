@@ -14,3 +14,4 @@ class NewsResponse(TypedDict):
     content : str
     source : str
     link : str
+    keyword : str
