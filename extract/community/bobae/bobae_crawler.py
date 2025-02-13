@@ -80,7 +80,7 @@ class BobaeCrawler:
 
                 if post_time < self.start_time:
                     return 'STOP' # 시작 날짜 이전의 게시물 무시
-                if not (self.start_time <= post_time <= self.end_time):
+                if not (self.start_time <= post_time < self.end_time):
                     return None # 지정된 날짜 범위 밖의 게시물 무시
 
             comments = post_soup.find_all('dd', {'id': lambda x: x and x.startswith('small_cmt_')})
