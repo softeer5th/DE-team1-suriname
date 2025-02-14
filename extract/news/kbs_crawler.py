@@ -7,6 +7,8 @@ import sys
 import requests
 import boto3
 from conf import BUCKET_NAME
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 class KBSCrawler :
     def __init__(self, request : NewsRequest) :
@@ -65,7 +67,11 @@ class KBSCrawler :
 
             # 데이터프레임을 parquet로 변환하여 메모리에서 처리
             parquet_buffer = io.BytesIO()
-            df.to_parquet(parquet_buffer, engine="pyarrow")
+
+            # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
+            table = pa.Table.from_pandas(df=df)
+            pq.write_table(table, parquet_buffer, coerce_timestamps='us')
+            # df.to_parquet(parquet_buffer, engine="pyarrow")
             parquet_buffer.seek(0)
 
             try:

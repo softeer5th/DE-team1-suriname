@@ -12,8 +12,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
                 .getOrCreate()as spark
     ):
         data_schema = StructType([
-            # TODO: post_time 타입 변경 필요
-            StructField('post_time', LongType(), True),
+            StructField('post_time', TimestampType(), True),
             StructField('title', StringType(), True),
             StructField('content', StringType(), True),
             StructField('source', StringType(), True),
@@ -29,6 +28,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
                 for accident in conf.ACCIDENT_KEYWORD
             ])
         )
+        df.show()
 
         df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
@@ -39,8 +39,8 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         )
         res_df = res_df.withColumn("car", F.lit(df.select('keyword').first()[0]))
         res_df = res_df.select('car', 'accident', 'count', 'contents')
-        res_df.show()
-        res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+        # res_df.show()
+        # res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
 if __name__ == "__main__":
