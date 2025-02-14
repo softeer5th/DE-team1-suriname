@@ -6,7 +6,8 @@ import conf
 
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
-        SparkSession.builder.appName("EMR transform news")
+        SparkSession.builder.appName(f"transform news at {batch_period}")
+                # 로컬에서 코드를 실행시킬때 config 적용
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
                 .getOrCreate()as spark
@@ -20,7 +21,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('keyword', StringType(), True)
         ])
 
-        df = spark.read.schema(data_schema).parquet(data_source + batch_period)
+        df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
         df = df.withColumn(
             'accident',
             F.array(*[
@@ -28,19 +29,18 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
                 for accident in conf.ACCIDENT_KEYWORD
             ])
         )
-        df.show()
 
         df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
 
-        res_df = df_exploded.groupBy("accident").agg(
+        res_df = df_exploded.groupBy("keyword", "accident").agg(
             F.count("*").alias("count"),
             F.collect_list("content").alias("contents")
         )
-        res_df = res_df.withColumn("car", F.lit(df.select('keyword').first()[0]))
-        res_df = res_df.select('car', 'accident', 'count', 'contents')
-        # res_df.show()
-        # res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+
+        res_df = res_df.select('keyword', 'accident', 'count', 'contents')
+        res_df.show()
+        res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
 if __name__ == "__main__":
