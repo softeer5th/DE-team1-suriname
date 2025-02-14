@@ -107,7 +107,7 @@ class SBSCrawler:
     
     def run(self):
         search_result = self.get_search_result()
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}_SBS_{self.request["keyword"]}.parquet'
+        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_{self.NEWS_TAG}.parquet'
         self.upload_s3(search_result, f_name)
 
         # 로컬용

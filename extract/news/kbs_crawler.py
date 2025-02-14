@@ -8,9 +8,6 @@ import requests
 import boto3
 from conf import BUCKET_NAME
 
-# Todo
-# parquet 저장
-
 class KBSCrawler :
     def __init__(self, request : NewsRequest) :
         self.request = request
@@ -90,7 +87,7 @@ class KBSCrawler :
             news_list.extend(news_data_list) 
             page_num += 1
 
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}_KBS_{self.request["keyword"]}.parquet'
+        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_KBS.parquet'
         self.upload_s3(news_list, f_name)
 
         # 로컬용.
