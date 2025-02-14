@@ -104,7 +104,7 @@ def news_issue_judgement(text, client, car_name, accident):
                     {{
                         "summary": "[본문 요약 결과]",
                         "issue_judgement": "[이슈 심각도 점수]",
-                        "reason", "[근거]"
+                        "reason": "[근거]"
                     }}
                 """
             }
