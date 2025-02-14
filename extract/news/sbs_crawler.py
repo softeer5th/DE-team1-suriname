@@ -3,6 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import sys
+import pyarrow as pa
+import pyarrow.parquet as pq
 from conf import BUCKET_NAME
 from type.news_crawler import NewsRequest, NewsResponse
 from typing import List, Optional
@@ -93,7 +95,11 @@ class SBSCrawler:
 
         # 데이터프레임을 parquet로 변환하여 메모리에서 처리
         parquet_buffer = io.BytesIO()
-        df.to_parquet(parquet_buffer, engine="pyarrow")
+
+        # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
+        table = pa.Table.from_pandas(df=df)
+        pq.write_table(table, parquet_buffer, coerce_timestamps='us')
+        # df.to_parquet(parquet_buffer, engine="pyarrow")
         parquet_buffer.seek(0)
 
         try:
@@ -107,7 +113,7 @@ class SBSCrawler:
     
     def run(self):
         search_result = self.get_search_result()
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}_SBS_{self.request["keyword"]}.parquet'
+        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_{self.NEWS_TAG}.parquet'
         self.upload_s3(search_result, f_name)
 
         # 로컬용

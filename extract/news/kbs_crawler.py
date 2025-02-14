@@ -7,9 +7,8 @@ import sys
 import requests
 import boto3
 from conf import BUCKET_NAME
-
-# Todo
-# parquet 저장
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 class KBSCrawler :
     def __init__(self, request : NewsRequest) :
@@ -68,7 +67,11 @@ class KBSCrawler :
 
             # 데이터프레임을 parquet로 변환하여 메모리에서 처리
             parquet_buffer = io.BytesIO()
-            df.to_parquet(parquet_buffer, engine="pyarrow")
+
+            # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
+            table = pa.Table.from_pandas(df=df)
+            pq.write_table(table, parquet_buffer, coerce_timestamps='us')
+            # df.to_parquet(parquet_buffer, engine="pyarrow")
             parquet_buffer.seek(0)
 
             try:
@@ -90,7 +93,7 @@ class KBSCrawler :
             news_list.extend(news_data_list) 
             page_num += 1
 
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}_KBS_{self.request["keyword"]}.parquet'
+        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_KBS.parquet'
         self.upload_s3(news_list, f_name)
 
         # 로컬용.
