@@ -85,7 +85,7 @@ def lambda_handler(event, context):
             return {'statusCode': 500, 'body': json.dumps(f"[ERROR] No data collected for {keyword}.")}
         
         ### S3 업로드 ###
-        object_key = f"data/community/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{community}_{keyword}.parquet"
+        object_key = f"data/community/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{community}_{keyword}.parquet"
         upload_result, msg = upload_df_to_s3(df, BUCKET_NAME, object_key)
         if upload_result == False:
             return {'statusCode': 500, 'body': json.dumps(f"[ERROR] Failed to load at S3\n{msg}")}
