@@ -3,6 +3,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 import conf
+import psycopg2
+from functools import partial
+from pyspark.sql.functions import regexp_replace, col
 
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
