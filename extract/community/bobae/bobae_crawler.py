@@ -94,7 +94,8 @@ class BobaeCrawler:
                 viewCount=viewCount,
                 likeCount=likeCount,
                 source='bobaedream',
-                link=post_url
+                link=post_url,
+                keyword=self.keyword
             )
         except TimeoutException:
             print(f"Timeout: {post_url} - {title}")
