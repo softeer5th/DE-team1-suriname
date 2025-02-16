@@ -41,7 +41,6 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         res_df = res_df.select('car_model', 'accident', 'post_time', 'title', 'content', 'comment', 'viewcount', 'likecount')
         res_df.show()
         
-        batch_period = 'T'.join(batch_period.split(' '))
         res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
