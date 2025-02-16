@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -5,11 +7,12 @@ from datetime import datetime
 import sys
 import pyarrow as pa
 import pyarrow.parquet as pq
-from conf import BUCKET_NAME
+from conf import BUCKET_NAME, MARKER_PATH
 from type.news_crawler import NewsRequest, NewsResponse
 from typing import List, Optional
 import io
 import boto3
+import json
 
 class SBSCrawler:
     NEWS_TAG = 'SBS'
@@ -108,8 +111,20 @@ class SBSCrawler:
                 f"[SBS] {len(df)} post are crawled.\n"
                 + f"[SBS] The data is successfully loaded at [{BUCKET_NAME}:{f_name}].\n"
             )
+            s3.upload_fileobj(Fileobj=self._get_trigger_obj(), Bucket=BUCKET_NAME, Key=f"{MARKER_PATH}{self.NEWS_TAG}.json")
         except Exception as e:
             print("Error : {e}".format(e = e))
+
+    def _get_trigger_obj(self)->BytesIO:
+        json_data = {
+            "source": self.NEWS_TAG,
+            "start_time": self.request["start_time"].strftime("%Y-%m-%d %H:%M"),
+            "end_time": self.request["end_time"].strftime("%Y-%m-%d %H:%M"),
+            "status": "success"
+        }
+        json_bytes = json.dumps(json_data).encode("utf-8")
+        file_obj = io.BytesIO(json_bytes)
+        return file_obj
     
     def run(self):
         search_result = self.get_search_result()
