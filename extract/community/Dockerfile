@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the main application code
 COPY lambda_function.py ./
-COPY bobae/ ./bobae/
+COPY bobae_crawler.py ./
+COPY dcinside_crawler.py ./
 COPY type/ ./type/
 COPY conf.py ./
 

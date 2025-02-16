@@ -68,17 +68,21 @@ def update_table_from_batch(partition, param, last_batch):
         port=param["port"], 
     )
     cur = conn.cursor()
+    start_batch_time = last_batch.split('_')[0]
     last_batch_time = last_batch.split('_')[1]
 
     for row in partition:
-        # Access row fields correctly
         car_model = row['keyword']
         accident = row['accident']
         accumulated_count = row['count']
         contents_json = json.dumps(row['contents'], ensure_ascii=False)
         query = f"""
         UPDATE accumulated_table
-        SET accumulated_count = accumulated_count + {accumulated_count}
+        SET start_batch_time = CASE 
+            WHEN accumulated_count = 0 THEN TIMESTAMP '{start_batch_time}' 
+            ELSE start_batch_time 
+        END,
+        accumulated_count = accumulated_count + {accumulated_count}
         , last_batch_time = TIMESTAMP '{last_batch_time}'
         , contents = jsonb_set(
             contents,
