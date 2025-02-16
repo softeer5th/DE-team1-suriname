@@ -21,3 +21,4 @@ class CommunityResponse(TypedDict):
     likeCount : int
     source : str
     link : str
+    keyword : str
