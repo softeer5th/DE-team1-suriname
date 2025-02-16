@@ -1,28 +1,20 @@
+import json
+import re
 from datetime import datetime
 from typing import Optional, List
-import re
-import json
+
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-import boto3
-import pyarrow as pa
-import pyarrow.parquet as pq
-from conf import *
-import io
-import sys
-from extract.news.type.news_crawler import NewsRequest, NewsResponse
 
-class YNACrawler(object):
-    NEWS_TAG = 'YNA'
+from base_crawler import BaseCrawler
+from type.news_crawler import NewsRequest, NewsResponse
 
+
+class YNACrawler(BaseCrawler):
     def __init__(self, request : NewsRequest):
-        self.request = request
+        super().__init__(request, source='YNA')
         self.page_base_url = "http://ars.yna.co.kr/api/v2/search.asis?callback=Search.SearchPreCallback&ctype=A&page_size=10&channel=basic_kr"
         self.news_base_url = "https://www.yna.co.kr/view/"
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
 
     def get_search_result(self)-> Optional[List[NewsResponse]]:
         news_input = self.request
@@ -77,48 +69,12 @@ class YNACrawler(object):
                             post_time=news_date,
                             title=news_title,
                             content=news_body,
-                            source=self.NEWS_TAG,
+                            source=self.source,
                             link=news_url,
                             keyword=self.request['keyword']
                         )
                     )
         return news_output
-
-    def save_to_parquet(self, news_output:List[NewsResponse], f_name:str)->None:
-        if len(news_output) != 0:
-            df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link","keyword"])
-            df.to_parquet(f_name, engine="pyarrow")
-        else:
-            print("news_output is empty", file=sys.stderr)
-
-    def upload_s3(self, news_output:List[NewsResponse], f_name:str)->None:
-        s3 = boto3.client('s3')
-        df = pd.DataFrame(news_output, columns=["post_time", "title", "content", "source", "link","keyword"])
-
-        # 데이터프레임을 parquet로 변환하여 메모리에서 처리
-        parquet_buffer = io.BytesIO()
-
-        # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
-        table = pa.Table.from_pandas(df=df)
-        pq.write_table(table, parquet_buffer, coerce_timestamps='us')
-        parquet_buffer.seek(0)
-
-        try:
-            s3.upload_fileobj(Fileobj=parquet_buffer, Bucket=BUCKET_NAME, Key=f_name)
-            print(
-                f"[{self.NEWS_TAG}] {len(df)} post are crawled.\n"
-                + f"[{self.NEWS_TAG}] The data is successfully loaded at [{BUCKET_NAME}:{f_name}].\n"
-            )
-        except Exception as e:
-            print("Error : {e}".format(e = e))
-
-    def run(self):
-        search_result = self.get_search_result()
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_{self.NEWS_TAG}.parquet'
-        self.upload_s3(search_result, f_name)
-
-        # 로컬용
-        # self.save_to_parquet(search_result, f_name)
 
     def _response_parser(self, response: requests.Response) -> json:
         response_json_str = re.sub(r"^Search\.SearchPreCallback\(|\)$", "", response.text)
