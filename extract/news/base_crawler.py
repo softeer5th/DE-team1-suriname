@@ -68,7 +68,9 @@ class BaseCrawler(ABC):
 
     def run(self):
         search_result = self.get_search_result()
-        f_name = f'data/news/{self.request["start_time"]}_{self.request["end_time"]}/{self.request["keyword"]}_{self.source}.parquet'
+        s_time = self.request["start_time"].strftime("%Y-%m-%d-%H-%M-%S")
+        e_time = self.request["end_time"].strftime("%Y-%m-%d-%H-%M-%S")
+        f_name = f'data/news/{s_time}_{e_time}/{self.request["keyword"]}_{self.source}.parquet'
         self.upload_s3(search_result, f_name)
 
         # 로컬용
