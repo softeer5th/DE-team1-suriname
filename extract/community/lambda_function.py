@@ -3,6 +3,8 @@ from datetime import datetime
 import json
 import boto3
 import pandas as pd
+import pyarrow
+import pyarrow.parquet as pq
 
 from bobae.bobae_crawler import BobaeCrawler
 from type.community_crawler import CommunityRequest, CommunityResponse
@@ -13,7 +15,11 @@ def upload_df_to_s3(df, bucket_name, object_name):
 
     # 데이터프레임을 parquet로 변환하여 메모리에서 처리
     parquet_buffer = io.BytesIO()
-    df.to_parquet(parquet_buffer, engine="pyarrow", index=False)
+
+    # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
+    table = pyarrow.Table.from_pandas(df=df)
+    pq.write_table(table, parquet_buffer, coerce_timestamps='us')
+    
     parquet_buffer.seek(0)
 
     try:
@@ -85,7 +91,7 @@ def lambda_handler(event, context):
             return {'statusCode': 500, 'body': json.dumps(f"[ERROR] No data collected for {keyword}.")}
         
         ### S3 업로드 ###
-        object_key = f"data/community/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{community}_{keyword}.parquet"
+        object_key = f"data/community/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}/{start_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{end_datetime.strftime('%Y-%m-%d %H:%M:%S')}_{community}_{keyword}.parquet"
         upload_result, msg = upload_df_to_s3(df, BUCKET_NAME, object_key)
         if upload_result == False:
             return {'statusCode': 500, 'body': json.dumps(f"[ERROR] Failed to load at S3\n{msg}")}
