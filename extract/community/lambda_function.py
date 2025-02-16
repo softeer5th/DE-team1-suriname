@@ -4,6 +4,7 @@ import json
 import boto3
 import pandas as pd
 import pyarrow
+import pyarrow.parquet as pq
 
 from bobae.bobae_crawler import BobaeCrawler
 from type.community_crawler import CommunityRequest, CommunityResponse
@@ -17,7 +18,7 @@ def upload_df_to_s3(df, bucket_name, object_name):
 
     # Pyspark에서 datetime이 깨지기 때문에 us 단위로 변환하여 저장
     table = pyarrow.Table.from_pandas(df=df)
-    pyarrow.parquet.write_table(table, parquet_buffer, coerce_timestamps='us')
+    pq.write_table(table, parquet_buffer, coerce_timestamps='us')
     
     parquet_buffer.seek(0)
 
