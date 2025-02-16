@@ -58,8 +58,8 @@ class BaseCrawler(ABC):
     def _get_trigger_obj(self)->BytesIO:
         json_data = {
             "source": self.source,
-            "start_time": self.request["start_time"].strftime("%Y-%m-%d %H:%M"),
-            "end_time": self.request["end_time"].strftime("%Y-%m-%d %H:%M"),
+            "start_time": self.request["start_time"].strftime("%Y-%m-%d-%H-%M-%S"),
+            "end_time": self.request["end_time"].strftime("%Y-%m-%d-%H-%M-%S"),
             "status": "success"
         }
         json_bytes = json.dumps(json_data).encode("utf-8")
