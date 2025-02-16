@@ -17,8 +17,8 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('title', StringType(), True),
             StructField('content', StringType(), True),
             StructField('comment',  ArrayType(StringType()), True),
-            StructField('viewCount', IntegerType(), True),
-            StructField('likeCount', IntegerType(), True),
+            StructField('viewCount', LongType(), True),
+            StructField('likeCount', LongType(), True),
             StructField('source', StringType(), True),
             StructField('link', StringType(), True),
             StructField('keyword', StringType(), True)
@@ -40,6 +40,8 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         res_df = df_exploded.withColumnRenamed("keyword", "car_model")
         res_df = res_df.select('car_model', 'accident', 'post_time', 'title', 'content', 'comment', 'viewcount', 'likecount')
         res_df.show()
+        
+        batch_period = 'T'.join(batch_period.split(' '))
         res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
