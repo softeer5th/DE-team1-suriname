@@ -5,7 +5,6 @@ import conf
 import psycopg2
 from functools import partial
 from pyspark.sql.functions import regexp_replace, col
-import json 
 
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
@@ -29,8 +28,8 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             "content",
             regexp_replace(
                 col("content"),
-                "[^가-힣a-zA-Z0-9\\s]",  
-                "" 
+                "[^가-힣a-zA-Z0-9\\s]",
+                ""
             )
         )
 
@@ -47,50 +46,52 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
 
         res_df = df_exploded.groupBy("keyword", "accident").agg(
             F.count("*").alias("count"),
-            F.collect_list("content").alias("contents")
+            F.to_json(
+                F.collect_list(
+                    F.struct("content", "link")
+                )
+            ).alias("news")
         )
 
-        res_df = res_df.select('keyword', 'accident', 'count', 'contents')
+        res_df = res_df.select('keyword', 'accident', 'count', 'news')
         res_df.show()
 
-        res_df.rdd.foreachPartition(partial(update_table_from_batch, param = conf.RDS_PROPERTY, last_batch = conf.S3_NEWS_BATCH_PERIOD))
+        res_df.rdd.foreachPartition(partial(update_table_from_batch, param = conf.RDS_PROPERTY, batch_period = batch_period))
         res_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
-        update_main_table()
+        update_main_table(batch_period)
 
     return
 
-def update_table_from_batch(partition, param, last_batch):
+def update_table_from_batch(partition, param, batch_period:str):
     conn = psycopg2.connect(
-        dbname= param["dbname"], 
-        user=param["user"], 
+        dbname= param["dbname"],
+        user=param["user"],
         password=param["password"],
         host=param["url"],
-        port=param["port"], 
+        port=param["port"],
     )
     cur = conn.cursor()
-    start_batch_time = last_batch.split('_')[0]
-    last_batch_time = last_batch.split('_')[1]
+    start_batch_time, last_batch_time = batch_period.split('_')
 
     for row in partition:
         car_model = row['keyword']
         accident = row['accident']
-        accumulated_count = row['count']
-        contents_json = json.dumps(row['contents'], ensure_ascii=False)
+        batch_count = row['count']
+        news_json = row['news']
         query = f"""
         UPDATE accumulated_table
-        SET start_batch_time = CASE 
-            WHEN accumulated_count = 0 THEN TIMESTAMP '{start_batch_time}' 
-            ELSE start_batch_time 
+        SET start_batch_time = CASE
+            WHEN news_acc_count = 0 THEN TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS')
+            ELSE start_batch_time
         END,
-        accumulated_count = accumulated_count + {accumulated_count}
-        , last_batch_time = TIMESTAMP '{last_batch_time}'
-        , contents = jsonb_set(
-            contents,
-            '{{contents}}',
-            COALESCE(contents->'contents', '[]'::jsonb) || '{contents_json}'::jsonb 
-        )
-        WHERE car_model = '{car_model}' 
-        AND accident = '{accident}';
+        news_acc_count = news_acc_count + {batch_count} ,
+        last_batch_time = TO_TIMESTAMP('{last_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') ,
+        news = jsonb_set(
+            news,
+            '{{news}}',
+            COALESCE(news->'news', '[]'::jsonb) || '{news_json}'::jsonb )
+        WHERE car_model = '{car_model}'
+            AND accident = '{accident}';
         """
         try:
             cur.execute(query)
@@ -103,39 +104,43 @@ def update_table_from_batch(partition, param, last_batch):
     conn.close()
 
 
-def update_main_table():
-    last_batch_time = conf.S3_NEWS_BATCH_PERIOD.split('_')[1]
+def update_main_table(batch_period:str):
+    start_batch_time, last_batch_time = batch_period.split('_')
     conn = psycopg2.connect(
-        dbname= conf.RDS_PROPERTY["dbname"], 
-        user=conf.RDS_PROPERTY["user"], 
+        dbname= conf.RDS_PROPERTY["dbname"],
+        user=conf.RDS_PROPERTY["user"],
         password=conf.RDS_PROPERTY["password"],
         host=conf.RDS_PROPERTY["url"],
-        port=conf.RDS_PROPERTY["port"], 
+        port=conf.RDS_PROPERTY["port"],
     )
     cur = conn.cursor()
 
-    query = f"""
+    clear_alert_query = f"""
         UPDATE accumulated_table
         SET is_alert = FALSE;
     """
 
-    query1 = f"""
+    clear_dead_issue_query = f"""
         UPDATE accumulated_table
-        SET accumulated_count = 0,
-        is_issue = FALSE
-        WHERE CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul' - TIMESTAMP '{last_batch_time}' > '1 day';
+        SET news_acc_count = 0,
+            is_issue = FALSE,
+            is_alert = FALSE,
+            start_batch_time = NULL,
+            last_batch_time = NULL,
+            news = '{{"news":[]}}'::jsonb
+        WHERE CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul' - TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') > '1 day';
     """
 
-    query2 = f""" 
+    set_issue_query = f""" 
         UPDATE accumulated_table
         SET is_issue = TRUE,
         is_alert = TRUE
-        WHERE accumulated_count >= {conf.THRESHOLD} and is_issue = FALSE;
+        WHERE news_acc_count >= {conf.THRESHOLD} and is_issue = FALSE;
     """
     try:
-        cur.execute(query)
-        cur.execute(query1)
-        cur.execute(query2)
+        cur.execute(clear_alert_query)
+        cur.execute(clear_dead_issue_query)
+        cur.execute(set_issue_query)
     except Exception as e:
         print(f"Error executing query: {e}")
         conn.rollback()
@@ -162,3 +167,4 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     #
     # transform(args.data_source, args.output_uri, args.batch_period)
+
