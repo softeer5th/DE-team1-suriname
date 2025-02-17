@@ -6,6 +6,8 @@ BUCKET_NAME = os.getenv("BUCKET_NAME")  # S3 버킷
 MARKER_PATH = os.getenv("MARKER_PATH")  # JSON 저장 경로
 DATA_SOURCE_PATH = os.getenv("DATA_SOURCE_PATH")
 OUTPUT_PATH = os.getenv("OUTPUT_PATH")
+LOG_PATH = os.getenv("LOG_PATH")
+LIB_PATH = os.getenv("LIB_PATH")
 REQUIRED_FILES = json.loads(os.getenv('REQUIRED_FILES'))
 EMR_APPLICATION_ID = os.getenv("EMR_APPLICATION_ID")  # EMR Serverless 애플리케이션 ID
 EMR_JOB_ROLE_ARN = os.getenv("EMR_JOB_ROLE_ARN")  # 실행 역할 ARN
@@ -46,13 +48,13 @@ def trigger_emr_serverless()->None:
                     "--output_uri", f"s3://{BUCKET_NAME}/{OUTPUT_PATH}",
                     "--batch_period", batch_period
                 ],
-                "sparkSubmitParameters": "--conf spark.executor.memory=4G --conf spark.executor.cores=2"
+                "sparkSubmitParameters": f"--conf spark.executor.memory=4G --conf spark.executor.cores=2 --py-files s3://{BUCKET_NAME}/{LIB_PATH}psycopg2.zip"
             }
         },
         configurationOverrides={
             "monitoringConfiguration": {
                 "s3MonitoringConfiguration": {
-                    "logUri": f"s3://{BUCKET_NAME}/emr-logs/"
+                    "logUri": f"s3://{BUCKET_NAME}/{LOG_PATH}"
                 }
             }
         }
@@ -74,8 +76,8 @@ def lambda_handler(event, context):
     print("Lambda function triggered by S3 event.")
 
     if check_files_exist():
-        delete_files()
         trigger_emr_serverless()
+        delete_files()
         return {
             "statusCode": 200,
             "body": json.dumps("EMR Serverless job triggered.")
