@@ -20,17 +20,18 @@ class YNACrawler(BaseCrawler):
         news_input = self.request
         news_output_total = []
         page_no = 1
+        print(self.request['keyword'])
         while True:
             news_list = self.get_page_content(news_input, page_no)
-            news_output = self.get_news_content(news_list)
-            if len(news_output) != 0:
-                print(len(news_output))
-                news_output_total.extend(news_output)
+            if len(news_list) != 0:
+                news_output = self.get_news_content(news_list)
+                if len(news_output) != 0:
+                    print(f'{len(news_output)} news pages extracted')
+                    news_output_total.extend(news_output)
             else:
                 break
             page_no += 1
-
-        print(f'{len(news_output_total)} news pages extracted')
+        
         return news_output_total
 
     def get_page_content(self, news_input: NewsRequest, page_no: int) -> List[dict]:
