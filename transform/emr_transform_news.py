@@ -13,7 +13,6 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         SparkSession.builder.appName(f"transform news at {batch_period}")
                 .config("spark.sql.session.timeZone", "UTC")
                 # 로컬에서 코드를 실행시킬때 config 적용
-                .config("spark.executor.memory", "4g")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
                 .getOrCreate()as spark
@@ -26,7 +25,6 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('link', StringType(), True),
             StructField('keyword', StringType(), True)
         ])
-        param = conf.RDS_PROPERTY
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
         df = df.withColumnRenamed("keyword", "car_model").select('car_model', 'title', 'content', 'link')
@@ -52,7 +50,6 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
 
         score_schema = df_exploded.schema.add('news_score', IntegerType(), True)
         score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = conf.GPT))
-
         scored_df = score_rdd.toDF(score_schema).cache()
 
         grouped_df = scored_df.groupBy("car_model", "accident").agg(
@@ -64,15 +61,11 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             ).alias("news"),
             F.avg("news_score").alias("avg_news_score")  # news_score의 평균값 계산
         )
-
         grouped_df.show()
-        grouped_df.printSchema()
 
         grouped_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY, batch_period = batch_period))
-        # score_df = spark.createDataFrame(score_rdd, score_schema)
         grouped_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
-        # grouped_df.show()
-        # update_main_table(batch_period)
+        update_main_table(batch_period)
 
     return
 
