@@ -65,7 +65,7 @@ class DCInsideCrawler:
         cur_search_url = self._get_start_url(driver, initial_search_url)
 
         total_df = pd.DataFrame(
-            columns=['post_time', 'title', 'content', 'comment', 'viewCount', 'likeCount', 'source', 'link', 'keyword']
+            columns=['post_time', 'title', 'content', 'comment', 'view_count', 'like_count', 'source', 'link', 'keyword']
         )
 
         while True: # start_datetime이 될 때까지 반복
@@ -91,12 +91,14 @@ class DCInsideCrawler:
 
         driver.quit()
 
-        # self.start_time, self.end_time을 UTC로 변환
-        start_time_utc = self.start_time.replace(tzinfo=pytz.UTC)
-        end_time_utc = self.end_time.replace(tzinfo=pytz.UTC)
+        # self.start_time, self.end_time을 Pandas Timestamp로 변환
+        start_time_utc = pd.Timestamp(self.start_time).tz_localize('UTC')
+        end_time_utc = pd.Timestamp(self.end_time).tz_localize('UTC')
 
-        total_df['Datetime'] = pd.to_datetime(total_df['post_time'])
-        total_df = total_df[(start_time_utc <= total_df['Datetime']) & (total_df['Datetime'] <= end_time_utc)]
+        total_df['Datetime'] = pd.to_datetime(total_df['post_time']).dt.tz_localize('UTC')
+
+        # 비교 연산이 올바르게 동작하도록 수정
+        total_df = total_df[(total_df['Datetime'] >= start_time_utc) & (total_df['Datetime'] <= end_time_utc)]
         total_df = total_df.sort_values(by=['Datetime']).drop(['Datetime'], axis=1)
         return total_df
     
@@ -194,7 +196,7 @@ class DCInsideCrawler:
 
         post_contents_df = pd.DataFrame(
             post_contents,
-            columns=['post_time', 'title', 'content', 'comment', 'viewCount', 'likeCount', 'source', 'link', 'keyword']
+            columns=['post_time', 'title', 'content', 'comment', 'view_count', 'like_count', 'source', 'link', 'keyword']
         )
         
         return post_contents_df
@@ -224,39 +226,68 @@ class DCInsideCrawler:
         def _get_post_comments(soup):
             comment_elements = soup.select("p.usertxt.ub-word")
             if not comment_elements:
-                return None
-            comments = '\n'.join(
-                el.text[:-len("- dc App")].strip() if el.text.endswith("- dc App") else el.text
+                return []
+            comments = [
+                {"content": el.text[:-len("- dc App")].strip() if el.text.endswith("- dc App") else el.text}
                 for el in comment_elements
-            )
+            ]
             return comments
         
         # 추천/비추천 크롤링
         def _get_post_up_down(soup):
-            try: up = soup.select_one("div.up_num_box p.up_num").text
-            except AttributeError: up = None
-            try: down = soup.select_one("div.down_num_box p.down_num").text
-            except AttributeError: down = None
+            try:
+                up = int(soup.select_one("div.up_num_box p.up_num").text.replace(',', ''))
+            except (AttributeError, ValueError):
+                up = 0
+            try:
+                down = int(soup.select_one("div.down_num_box p.down_num").text.replace(',', ''))
+            except (AttributeError, ValueError):
+                down = 0
             return up, down
         
         ##########################################################################################
-        title = date = time = views = num_comments = dc_app = like = dislike = body = comments = None
+        title = None
+        post_time = None
+        view_count = 0
+        like_count = 0
+        body = None
+        comments = []
+
         for _ in range(MAX_PAGE_ACCESS):
             try:
                 soup = self._get_url_soup(driver, url)
-                date, time = soup.select_one('div.fl span.gall_date').text.split()
-                post_time = datetime.strptime(f"{date} {time}", "%Y.%m.%d %H:%M:%S")
-                post_time = post_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                title = soup.select_one('h3.title.ub-word span.title_subject').text
-                _, viewCount, _, _, _, num_comments = soup.select("div.fr")[1].text.split()
+                
+                # 제목 크롤링
+                title_element = soup.select_one('h3.title.ub-word span.title_subject')
+                title = title_element.text if title_element else "Untitled"
+
+                # 게시 날짜 크롤링 및 변환
+                date_element = soup.select_one('div.fl span.gall_date')
+                if date_element:
+                    date, time_str = date_element.text.split()
+                    post_time = datetime.strptime(f"{date} {time_str}", "%Y.%m.%d %H:%M:%S")
+                else:
+                    post_time = datetime.utcnow()
+
+                # 조회수 크롤링 (정수 변환)
+                try:
+                    _, view_count, _, _, _, num_comments = soup.select("div.fr")[1].text.split()
+                    view_count = int(view_count.replace(',', ''))
+                except (ValueError, IndexError):
+                    view_count = 0
+
+                # 본문 크롤링
                 _, body = _get_post_body(soup)
-                comment = _get_post_comments(soup)
-                likeCount, dislike = _get_post_up_down(soup)
                 if not body:
                     raise Exception("본문 크롤링 실패")
-                if int(num_comments) > 0 and comment is None:
-                    raise Exception("댓글 크롤링 실패")
-                if likeCount is None: # up만 확인하는 이유: 가끔 비추가 아예 없는 글이 있음
+
+                # 댓글 크롤링 (List[CommunityComment] 형태)
+                comments = _get_post_comments(soup)
+
+                # 추천 / 비추천 크롤링
+                like_count, _ = _get_post_up_down(soup)
+                
+                if like_count is None:
                     raise Exception("추천 수 크롤링 실패")
 
                 print(f"[INFO] 게시글 크롤링 완료 - {url}\n")
@@ -267,13 +298,13 @@ class DCInsideCrawler:
             print(f"[ERROR] 게시글 크롤링 실패 - {url}\n")
         
         return CommunityResponse(
-                post_time=post_time,
-                title=title,
-                content=body,
-                comment=comment,
-                viewCount=viewCount,
-                likeCount=likeCount,
-                source='dcinside',
-                link=url,
-                keyword=self.keyword
-            )
+            post_time=post_time,
+            title=title,
+            content=body,
+            comment=comments,
+            view_count=view_count,
+            like_count=like_count,
+            source='dcinside',
+            link=url,
+            keyword=self.keyword
+        )

@@ -101,10 +101,10 @@ class BobaeCrawler:
                 date_time_text = date_time_element.get_text(strip=True)
                 date_time_match = re.search(r'(\d{4}\.\d{2}\.\d{2})\s*\(\w+\)\s*(\d{2}:\d{2})', date_time_text)
 
-                viewCount_str = em_elements[0].get_text(strip=True) if len(em_elements) > 0 else 0
-                viewCount = int(viewCount_str.replace(',', ''))
-                likeCount_str = em_elements[1].get_text(strip=True) if len(em_elements) > 1 else 0
-                likeCount = int(likeCount_str.replace(',', ''))
+                view_count_str = em_elements[0].get_text(strip=True) if len(em_elements) > 0 else 0
+                view_count = int(view_count_str.replace(',', ''))
+                like_count_str = em_elements[1].get_text(strip=True) if len(em_elements) > 1 else 0
+                like_count = int(like_count_str.replace(',', ''))
                 post_time = datetime.strptime(date_time_match.group(1) + ' ' + date_time_match.group(2), "%Y.%m.%d %H:%M")
 
                 if post_time < self.start_time:
@@ -120,8 +120,8 @@ class BobaeCrawler:
                 title=title,
                 content=body_text,
                 comment=comment,
-                viewCount=viewCount,
-                likeCount=likeCount,
+                view_count=view_count,
+                like_count=like_count,
                 source='bobaedream',
                 link=post_url,
                 keyword=self.keyword
