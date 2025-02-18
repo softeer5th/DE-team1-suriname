@@ -60,7 +60,7 @@ class YNACrawler(BaseCrawler):
                 news_soup = BeautifulSoup(news_response.text, 'html.parser')
                 news_date_str = news_soup.select_one('.update-time')["data-published-time"]
                 news_date = datetime.strptime(news_date_str, '%Y-%m-%d %H:%M')
-                if self.request['start_time'] <= news_date <= self.request['end_time']:
+                if self.request['start_time'] <= news_date < self.request['end_time']:
                     news_body_list = news_soup.select('article.story-news.article > p:not([class])')
                     news_body = " ".join(p.text.strip() for p in news_body_list)
 
