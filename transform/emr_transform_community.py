@@ -20,7 +20,10 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('post_time', TimestampType(), True),
             StructField('title', StringType(), True),
             StructField('content', StringType(), True),
-            StructField('comment',  ArrayType(StringType()), True),
+            # StructField('comment',  ArrayType(StringType()), True),
+            # StructField('comment', ArrayType(StructType([
+            #     StructField('content', StringType(), True)
+            # ])), True),
             StructField('view_count', LongType(), True),
             StructField('like_count', LongType(), True),
             StructField('source', StringType(), True),
@@ -57,7 +60,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         )
         score_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY))
         score_df.show()
-        score_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+        filtered_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
 def community_score_rdd_generator(partition, param):
@@ -71,8 +74,38 @@ def community_score_rdd_generator(partition, param):
             row_with_score['comm_score'] = None
             yield row_with_score
 
-def get_community_score_from_gpt()->int:
-    return 1
+def get_community_score_from_gpt(input_text: str, api_key: str, model: str = "gpt-4o-mini") -> int:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": f"""
+                [뉴스 분석 요청]
+                {input_text}
+
+                >> 요청사항: 해당 뉴스가 현대자동차 특정 사고에 얼마나 중요한 영향을 주는지 점수로 계산해주세요 (0~100 사이 값).
+                """
+            }
+        ],
+        "temperature": 0.2
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip()
+        score = int(content)
+        return score
+    except Exception as e:
+        print(f"Error while calling API: {e}")
+        return 0
+
 
 def merge_batch_into_main_table(partition, param):
     conn = psycopg2.connect(
