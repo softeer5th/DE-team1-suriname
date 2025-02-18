@@ -9,6 +9,7 @@ import psycopg2
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
         SparkSession.builder.appName(f"transform news at {batch_period}").config("spark.driver.bindAddress", "0.0.0.0")
+                .config("spark.sql.session.timeZone", "UTC")
                 # 로컬에서 코드를 실행시킬때 config 적용
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
@@ -28,6 +29,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         ])
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
+
         df = df.withColumn(
             'accident',
             F.array(*[
@@ -55,7 +57,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         )
         score_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY))
         score_df.show()
-        filtered_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+        score_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
 def community_score_rdd_generator(partition, param):

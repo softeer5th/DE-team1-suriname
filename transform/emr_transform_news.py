@@ -9,6 +9,7 @@ from pyspark.sql.functions import regexp_replace, col
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
         SparkSession.builder.appName(f"transform news at {batch_period}")
+                .config("spark.sql.session.timeZone", "UTC")
                 # 로컬에서 코드를 실행시킬때 config 적용
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
