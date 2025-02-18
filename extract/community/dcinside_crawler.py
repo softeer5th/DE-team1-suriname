@@ -215,12 +215,11 @@ class DCInsideCrawler:
                     for element in write_div.find_all(class_=excluded_class):
                         element.extract()
                 # write_div 요소 내부의 모든 p와 div 태그의 텍스트를 가져오기
-                body_elements = write_div.find_all(['p', 'div'])
-                body = '\n'.join([element.get_text(separator="\n", strip=True) for element in body_elements])
-            dc_app = body.endswith("- dc official App")
+                body_elements = write_div.get_text(separator="\n", strip=True)
+            dc_app = body_elements.endswith("- dc official App")
             if dc_app:
-                body = body[:-len("- dc official App")].strip()
-            return dc_app, body
+                body_elements = body_elements[:-len("- dc official App")].strip()
+            return body_elements
         
         # 댓글 크롤링
         def _get_post_comments(soup):
@@ -228,7 +227,7 @@ class DCInsideCrawler:
             if not comment_elements:
                 return []
             comments = [
-                {"content": el.text[:-len("- dc App")].strip() if el.text.endswith("- dc App") else el.text}
+                el.text[:-len("- dc App")].strip() if el.text.endswith("- dc App") else el.text
                 for el in comment_elements
             ]
             return comments
@@ -277,7 +276,7 @@ class DCInsideCrawler:
                     view_count = 0
 
                 # 본문 크롤링
-                _, body = _get_post_body(soup)
+                body = _get_post_body(soup)
                 if not body:
                     raise Exception("본문 크롤링 실패")
 
