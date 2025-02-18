@@ -1,43 +1,37 @@
+from functools import partial
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 import conf
 import psycopg2
-from functools import partial
-from pyspark.sql.functions import regexp_replace, col
 import requests
-import json
 
 def transform(data_source:str, output_uri:str, batch_period:str)-> None:
     with (
-        SparkSession.builder.appName(f"transform news at {batch_period}")
+        SparkSession.builder.appName(f"transform news at {batch_period}").config("spark.driver.bindAddress", "0.0.0.0")
                 .config("spark.sql.session.timeZone", "UTC")
                 # 로컬에서 코드를 실행시킬때 config 적용
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
                 .getOrCreate()as spark
     ):
+        
         data_schema = StructType([
             StructField('post_time', TimestampType(), True),
             StructField('title', StringType(), True),
             StructField('content', StringType(), True),
+            StructField('comment',  ArrayType(StringType()), True),
+            StructField('view_count', LongType(), True),
+            StructField('like_count', LongType(), True),
             StructField('source', StringType(), True),
             StructField('link', StringType(), True),
             StructField('keyword', StringType(), True)
         ])
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
-        df = df.withColumnRenamed("keyword", "car_model").select('car_model', 'title', 'content', 'link')
+        df = df.withColumnRenamed("keyword", "car_model").select("car_model", "title", "content", "link")
         df = df.withColumn(
-            "content",
-            regexp_replace(
-                col("content"),
-                "[^가-힣a-zA-Z0-9\\s]",
-                ""
-            )
-        )
-
-        accident_df = df.withColumn(
             'accident',
             F.array(*[
                 F.when(F.col('title').contains(accident) | F.col('content').contains(accident), accident)
@@ -45,10 +39,15 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             ])
         )
 
-        df_exploded = accident_df.withColumn("accident", F.explode(F.col("accident"))) \
+        # TEST: 모든 행을 급발진 사건으로 설정
+        # df = df.withColumn(
+        #     'accident',
+        #     F.array(F.lit("급발진"))
+        # )
+        df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
 
-        score_schema = df_exploded.schema.add('news_score', IntegerType(), True)
+        score_schema = df_exploded.schema.add('comm_score', IntegerType(), True)
         score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = conf.GPT))
         scored_df = score_rdd.toDF(score_schema).cache()
 
@@ -58,15 +57,12 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
                 F.collect_list(
                     F.struct("content", "link")
                 )
-            ).alias("news"),
-            F.avg("news_score").alias("avg_news_score")  # news_score의 평균값 계산
+            ).alias("comm"),
+            F.avg("comm_score").alias("avg_comm_score")
         )
         grouped_df.show()
-
-        grouped_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY, batch_period = batch_period))
+        grouped_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY))
         grouped_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
-        update_main_table(batch_period)
-
     return
 
 def score_rdd_generator(partition, param):
@@ -75,7 +71,7 @@ def score_rdd_generator(partition, param):
     for row in partition:
         row_with_score = row.asDict().copy()
         try:
-            row_with_score['news_score'] = get_score_from_gpt(
+            row_with_score['comm_score'] = get_score_from_gpt(
                 car_model=row_with_score['car_model'],
                 accident=row_with_score['accident'],
                 input_text=row_with_score['content'],
@@ -85,101 +81,8 @@ def score_rdd_generator(partition, param):
             yield row_with_score
         except Exception as e:
             print(f"Error processing row: {e}")
-            row_with_score['news_score'] = 0
+            row_with_score['comm_score'] = 0
             yield row_with_score
-
-
-def merge_batch_into_main_table(partition, param, batch_period:str):
-    conn = psycopg2.connect(
-        dbname= param["dbname"],
-        user=param["user"],
-        password=param["password"],
-        host=param["url"],
-        port=param["port"],
-    )
-    cur = conn.cursor()
-    start_batch_time, last_batch_time = batch_period.split('_')
-
-    for row in partition:
-        car_model = row['car_model']
-        accident = row['accident']
-        batch_count = row['count']
-        news_json = row['news']
-        news_score = row['avg_news_score']
-        query = f"""
-        UPDATE accumulated_table
-        SET start_batch_time = CASE
-            WHEN news_acc_count = 0 THEN TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS')
-            ELSE start_batch_time
-        END,
-        news_acc_count = news_acc_count + {batch_count} ,
-        last_batch_time = TO_TIMESTAMP('{last_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') ,
-        news = jsonb_set(
-            news,
-            '{{news}}',
-            COALESCE(news->'news', '[]'::jsonb) || '{news_json}'::jsonb ) ,
-        news_score = {news_score}
-        WHERE car_model = '{car_model}'
-            AND accident = '{accident}';
-        """
-        try:
-            cur.execute(query)
-        except Exception as e:
-            print(f"Error executing query: {e}")
-            conn.rollback()
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def update_main_table(batch_period:str):
-    start_batch_time, last_batch_time = batch_period.split('_')
-    conn = psycopg2.connect(
-        dbname= conf.RDS_PROPERTY["dbname"],
-        user=conf.RDS_PROPERTY["user"],
-        password=conf.RDS_PROPERTY["password"],
-        host=conf.RDS_PROPERTY["url"],
-        port=conf.RDS_PROPERTY["port"],
-    )
-    cur = conn.cursor()
-
-    clear_alert_column_query = f"""
-        UPDATE accumulated_table
-        SET is_alert = FALSE;
-    """
-
-    clear_dead_issue_query = f"""
-        UPDATE accumulated_table
-        SET news_acc_count = 0,
-            is_issue = FALSE,
-            is_alert = FALSE,
-            start_batch_time = NULL,
-            last_batch_time = NULL,
-            news_score = 0,
-            comm_score = 0,
-            issue_score = 0,
-            comm_acc_count = 0,
-            news = '{{"news":[]}}'::jsonb
-        WHERE CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul' - TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') > '1 day';
-    """
-
-    set_issue_query = f""" 
-        UPDATE accumulated_table
-        SET is_issue = TRUE,
-        is_alert = TRUE
-        WHERE news_acc_count >= {conf.THRESHOLD} and is_issue = FALSE;
-    """
-    try:
-        cur.execute(clear_alert_column_query)
-        cur.execute(clear_dead_issue_query)
-        cur.execute(set_issue_query)
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        conn.rollback()
-
-    conn.commit()
-    cur.close()
-    conn.close()
 
 def get_score_from_gpt(car_model:str, accident:str, input_text: str, api_key: str, model: str = "gpt-4o-mini") -> int:
     url = "https://api.openai.com/v1/chat/completions"
@@ -251,12 +154,40 @@ def get_score_from_gpt(car_model:str, accident:str, input_text: str, api_key: st
         print(f"Error while calling API: {e}. score set to 0.")
         return 0
 
+def merge_batch_into_main_table(partition, param):
+    conn = psycopg2.connect(
+        dbname= param["dbname"],
+        user=param["user"],
+        password=param["password"],
+        host=param["url"],
+        port=param["port"],
+    )
+    cur = conn.cursor()
+
+    for row in partition:
+        query = f"""
+        UPDATE accumulated_table
+        SET comm_score = {row['avg_comm_score']} ,
+            comm_acc_count = COALESCE(comm_acc_count, 0) + {row['count']}
+        WHERE car_model = '{row['car_model']}'
+            AND accident = '{row['accident']}';
+        """
+        try:
+            cur.execute(query)
+        except Exception as e:
+            print(f"Error executing query: {e}")
+            conn.rollback()
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
 if __name__ == "__main__":
 
     # 로컬에서 사용 시 주석 해제
-    data_source = conf.S3_NEWS_DATA
-    output_uri = conf.S3_NEWS_OUTPUT
-    batch_period = conf.S3_NEWS_BATCH_PERIOD
+    data_source = conf.S3_COMMUNITY_DATA
+    output_uri = conf.S3_COMMUNITY_OUTPUT
+    batch_period = conf.S3_COMMUNITY_BATCH_PERIOD
     transform(data_source, output_uri, batch_period)
 
     # EMR에서 실행할 때 주석 해제
@@ -267,4 +198,3 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     #
     # transform(args.data_source, args.output_uri, args.batch_period)
-

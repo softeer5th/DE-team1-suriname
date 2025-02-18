@@ -10,6 +10,7 @@ import time
 import pandas as pd
 import re
 from tempfile import mkdtemp
+from conf import BUCKET_NAME, BOBAEDREAM_URL
 
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) # 로컬에서 테스트 할 시 주석 해제 필요
 from type.community_crawler import CommunityRequest, CommunityResponse
@@ -55,6 +56,34 @@ class BobaeCrawler:
         driver.set_page_load_timeout(10)  # 타임아웃 시간 설정 (10초)
         return driver
     
+    def start_crawling(self):
+        results = []
+        current_page = 1
+        stop_crawling = False
+
+        base_url = "https://www.bobaedream.co.kr/list?code=national&s_cate=&maker_no=&model_no=&or_gu=10&or_se=desc&s_selday=&pagescale=70&info3=&noticeShow=&s_select=Body&s_key=&level_no=&vdate=&type=list&page=1"
+        search_url = f"{base_url}&s_key={self.keyword}"
+
+        while not stop_crawling:
+            article_data_list = self.process_page(self.request, current_page, search_url)
+
+            if not article_data_list:
+                break  # 더 이상 게시글이 없으면 크롤링 종료
+
+            for post_url, title, start_time, end_time in article_data_list:
+                data = self.extract_article_data(self.request, title, post_url)
+
+                if data == 'STOP':
+                    stop_crawling = True
+                    break
+                elif data:
+                    results.append(data)
+
+            current_page += 1
+
+        df = pd.DataFrame(results)
+        return df
+    
     def extract_article_data(self, request, title, post_url):
         driver = self.init_driver()
         try:
@@ -72,10 +101,10 @@ class BobaeCrawler:
                 date_time_text = date_time_element.get_text(strip=True)
                 date_time_match = re.search(r'(\d{4}\.\d{2}\.\d{2})\s*\(\w+\)\s*(\d{2}:\d{2})', date_time_text)
 
-                viewCount_str = em_elements[0].get_text(strip=True) if len(em_elements) > 0 else 0
-                viewCount = int(viewCount_str.replace(',', ''))
-                likeCount_str = em_elements[1].get_text(strip=True) if len(em_elements) > 1 else 0
-                likeCount = int(likeCount_str.replace(',', ''))
+                view_count_str = em_elements[0].get_text(strip=True) if len(em_elements) > 0 else 0
+                view_count = int(view_count_str.replace(',', ''))
+                like_count_str = em_elements[1].get_text(strip=True) if len(em_elements) > 1 else 0
+                like_count = int(like_count_str.replace(',', ''))
                 post_time = datetime.strptime(date_time_match.group(1) + ' ' + date_time_match.group(2), "%Y.%m.%d %H:%M")
 
                 if post_time < self.start_time:
@@ -91,8 +120,8 @@ class BobaeCrawler:
                 title=title,
                 content=body_text,
                 comment=comment,
-                viewCount=viewCount,
-                likeCount=likeCount,
+                view_count=view_count,
+                like_count=like_count,
                 source='bobaedream',
                 link=post_url,
                 keyword=self.keyword
@@ -131,9 +160,8 @@ class BobaeCrawler:
     def save_to_csv(self, request, dataframe, result_dir):
         result_file = os.path.join(result_dir, f'{self.start_time}_{self.end_time}_bobaedream_{self.keyword}.csv')
         dataframe.to_csv(result_file, index=False, encoding='utf-8-sig')
-            
 
- 
+            
 
 if __name__ == "__main__":
     # 명령줄 인수를 받아서 처리
@@ -200,6 +228,7 @@ if __name__ == "__main__":
             df = pd.DataFrame()
 
         current_page += 1
+        
 
     # 남은 데이터 저장
     if not df.empty:
