@@ -20,31 +20,33 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('title', StringType(), True),
             StructField('content', StringType(), True),
             StructField('comment',  ArrayType(StringType()), True),
-            StructField('viewCount', LongType(), True),
-            StructField('likeCount', LongType(), True),
+            StructField('view_count', LongType(), True),
+            StructField('like_count', LongType(), True),
             StructField('source', StringType(), True),
             StructField('link', StringType(), True),
             StructField('keyword', StringType(), True)
         ])
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
-        # df = df.withColumn(
-        #     'accident',
-        #     F.array(*[
-        #         F.when(F.col('title').contains(accident) | F.col('content').contains(accident), accident)
-        #         for accident in conf.ACCIDENT_KEYWORD
-        #     ])
-        # )
         df = df.withColumn(
             'accident',
-            F.array(F.lit("급발진"))
+            F.array(*[
+                F.when(F.col('title').contains(accident) | F.col('content').contains(accident), accident)
+                for accident in conf.ACCIDENT_KEYWORD
+            ])
         )
+
+        # TEST: 모든 행을 급발진 사건으로 설정
+        # df = df.withColumn(
+        #     'accident',
+        #     F.array(F.lit("급발진"))
+        # )
         df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
 
         # 커뮤니티 데이터는 어차피 이슈인것만 가져오기 때문에 뉴스와 달리 groupby안해줘도됨.
         filtered_df = df_exploded.withColumnRenamed("keyword", "car_model")
-        filtered_df = filtered_df.select('car_model', 'accident', 'post_time', 'title', 'content', 'comment', 'viewCount', 'likeCount')
+        filtered_df = filtered_df.select('car_model', 'accident', 'post_time', 'title', 'content', 'comment', 'view_count', 'like_count')
 
         score_rdd = filtered_df.rdd.mapPartitions(partial(community_score_rdd_generator, param = conf.RDS_PROPERTY))
         score_df = score_rdd.toDF().groupBy("car_model", "accident").agg(
