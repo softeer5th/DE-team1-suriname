@@ -135,7 +135,7 @@ def update_main_table(batch_period:str):
     )
     cur = conn.cursor()
 
-    clear_alert_query = f"""
+    clear_alert_column_query = f"""
         UPDATE accumulated_table
         SET is_alert = FALSE;
     """
@@ -147,6 +147,10 @@ def update_main_table(batch_period:str):
             is_alert = FALSE,
             start_batch_time = NULL,
             last_batch_time = NULL,
+            news_score = 0,
+            comm_score = 0,
+            issue_score = 0,
+            comm_acc_count = 0,
             news = '{{"news":[]}}'::jsonb
         WHERE CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul' - TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') > '1 day';
     """
@@ -158,7 +162,7 @@ def update_main_table(batch_period:str):
         WHERE news_acc_count >= {conf.THRESHOLD} and is_issue = FALSE;
     """
     try:
-        cur.execute(clear_alert_query)
+        cur.execute(clear_alert_column_query)
         cur.execute(clear_dead_issue_query)
         cur.execute(set_issue_query)
     except Exception as e:
