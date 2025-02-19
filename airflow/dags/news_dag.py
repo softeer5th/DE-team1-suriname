@@ -67,7 +67,7 @@ for source in news_sources:
             # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
             # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
             "start_time_str": "2024-07-02T00:00", # test
-            "end_time_str": "2024-07-03T00:00" # test
+            "end_time_str": "2024-07-02T06:00" # test
         }),
         aws_conn_id=None, # MWAA에서는 필요 없음
         region_name='ap-northeast-2',
@@ -89,7 +89,7 @@ entryPointArguments = [
     "--data_source", s3_news_data,
     "--output_uri", s3_news_output,
     # "--batch_period", "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
-    "--batch_period", "2024-07-02-00-00-00_2024-07-03-00-00-00", # test
+    "--batch_period", "2024-07-02-00-00-00_2024-07-02-06-00-00", # test
     "--accident_keyword", accident_keyword,
     "--gpt", gpt
 ]
@@ -116,7 +116,7 @@ lambda_load_news_task = LambdaInvokeFunctionOperator(
     task_id='invoke_lambda_load_news',
     function_name='lambda_load_news',
     payload=json.dumps({
-        "batch_period": "2024-07-02-00-00-00_2024-07-03-00-00-00",  # 테스트용
+        "batch_period": "2024-07-02-00-00-00_2024-07-02-06-00-00",  # 테스트용
         # "batch_period": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
         "threshold": Variable.get("THRESHOLD", 10),  # 뉴스 이슈 기준 값
         "dbname": Variable.get("RDS_DBNAME"),

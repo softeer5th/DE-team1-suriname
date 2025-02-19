@@ -15,8 +15,8 @@ import pytz
 
 from type.community_crawler import CommunityRequest, CommunityResponse
 
-MAX_PAGE_ACCESS = 4 # 한 페이지에 크롤링을 시도하는 최대 횟수
-WAIT_TIME = 2 # 페이지 로드를 기다리는 시간
+MAX_PAGE_ACCESS = 2 # 한 페이지에 크롤링을 시도하는 최대 횟수
+WAIT_TIME = 1 # 페이지 로드를 기다리는 시간
 
 
 # 크롬 드라이버 경로 설정
@@ -81,7 +81,7 @@ class DCInsideCrawler:
 
             if len(batch_df) != 0:
                 last_post_datetime = batch_df.iloc[-1]['post_time']
-                print(batch_df.iloc[-1])
+                # print(batch_df.iloc[-1])
 
             if stop_flag:
                 print("[INFO] 전체 크롤링 종료\n")
