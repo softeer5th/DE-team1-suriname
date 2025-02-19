@@ -168,13 +168,13 @@ def load_final_table(df_view_table, conn, event) :
         comm_count = row['comm_count']
         news_count = row['news_count']
         start_batch_time = row['start_batch_time']
-        created_time = event["batch_period"].split('_')[1]
+        batch_time = event["batch_period"].split('_')[1]
 
         insert_query = """
-        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, created_time)
+        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, created_time))
+        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time))
 
     conn.commit()
     cur.close()
