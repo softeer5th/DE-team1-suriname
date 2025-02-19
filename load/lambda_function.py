@@ -105,16 +105,17 @@ def load_issue_score(df_community, df_news, conn, event) :
     df_scaled = df_scaled.rename(columns={'count': 'news_count'})
     df_view_table = df_view_table.rename(columns={'count': 'news_count'})
 
-    comm_agg = df_community.groupby(['car_model', 'accident'], as_index=False).size()
 
-    # 컬럼 이름을 'comm_count'로 변경
-    comm_agg = comm_agg.rename(columns={'size': 'comm_count'})
+    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count']],
+                                on=['car_model', 'accident'],
+                                how='left')
+    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count']],
+                                on=['car_model', 'accident'],
+                                how='left')
+    
+    df_scaled = df_scaled.rename(columns={'count': 'comm_count'})
+    df_view_table = df_view_table.rename(columns={'count': 'comm_count'})
 
-    # df_scaled와 (car_model, accident) 키를 기준으로 left join 수행하여 'comm_count' 컬럼 추가
-    df_scaled = df_scaled.merge(comm_agg, on=['car_model', 'accident'], how='left')
-    df_view_table = df_view_table.merge(comm_agg, on=['car_model', 'accident'], how='left')
-
-    # 키에 맞는 값이 없는 경우 NaN이 발생하므로, 이를 0으로 채움
     df_scaled['comm_count'] = df_scaled['comm_count'].fillna(0)
     df_view_table['comm_count'] = df_view_table['comm_count'].fillna(0)
 
