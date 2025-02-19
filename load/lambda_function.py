@@ -150,12 +150,15 @@ def load_issue_score(df_community, df_news, conn, event) :
 
     conn.commit()
     cur.close()
-    return df_view_table, df_scaled
 
-def load_final_table(df_view_table, df_scaled, conn, event) :
+    df_view_table = df_view_table.drop('issue_score', axis=1)
+    df_view_table = df_view_table.merge(df_scaled[['car_model', 'accident', 'issue_score']],on=['car_model', 'accident'], how='left')
+
+    return df_view_table
+
+def load_final_table(df_view_table, conn, event) :
     cur = conn.cursor()
     df_view_table = df_view_table.drop('news', axis=1)
-    df_view_table = df_view_table.drop('issue_score', axis=1)
 
     for idx, row in df_view_table.iterrows():
         car_model = row['car_model']
@@ -327,8 +330,8 @@ def lambda_handler(event, context):
     )
     load_news(df_news,batch_period,issue_threshold, conn)
     load_community(df_community, conn)
-    df_view_table, df_scaled = load_issue_score(df_community, df_news, conn, event)
-    load_final_table(df_view_table, df_scaled, conn, event)
+    df_view_table = load_issue_score(df_community, df_news, conn, event)
+    load_final_table(df_view_table, conn, event)
 
     return {
         "statusCode": 200,
