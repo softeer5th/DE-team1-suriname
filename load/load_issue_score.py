@@ -2,7 +2,6 @@ import psycopg2
 import conf
 import pandas as pd
 import numpy as np 
-import conf
 import boto3 
 import pyarrow.parquet as pq
 import io
