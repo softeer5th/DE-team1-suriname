@@ -94,10 +94,16 @@ def load_issue_score(df_community, df_news, conn, event) :
     df_scaled = df_scaled.merge(df_news[['car_model', 'accident', 'count']],
                                 on=['car_model', 'accident'],
                                 how='left')
+    df_view_table = df_view_table.merge(df_news[['car_model', 'accident', 'count']],
+                                on=['car_model', 'accident'],
+                                how='left')
 
     # 조인 후, 해당 키에 맞는 값이 없으면 NaN이 생기므로 0으로 채움
     df_scaled['count'] = df_scaled['count'].fillna(0)
+    df_view_table['comm_count'] = df_view_table['comm_count'].fillna(0)
+
     df_scaled = df_scaled.rename(columns={'count': 'news_count'})
+    df_view_table = df_view_table.rename(columns={'count': 'news_count'})
 
     comm_agg = df_community.groupby(['car_model', 'accident'], as_index=False).size()
 
@@ -106,9 +112,11 @@ def load_issue_score(df_community, df_news, conn, event) :
 
     # df_scaled와 (car_model, accident) 키를 기준으로 left join 수행하여 'comm_count' 컬럼 추가
     df_scaled = df_scaled.merge(comm_agg, on=['car_model', 'accident'], how='left')
+    df_view_table = df_view_table.merge(comm_agg, on=['car_model', 'accident'], how='left')
 
     # 키에 맞는 값이 없는 경우 NaN이 발생하므로, 이를 0으로 채움
     df_scaled['comm_count'] = df_scaled['comm_count'].fillna(0)
+    df_view_table['comm_count'] = df_view_table['comm_count'].fillna(0)
 
     # 2. news_count: 범위 1 ~ 5 / 5 ~ 10 / 10 이상
     df_scaled['news_count'] = piecewise_linear_vec(df_scaled['news_count'], lower=1, mid=5, upper=10)
@@ -148,7 +156,6 @@ def load_final_table(df_view_table, df_scaled, conn, event) :
     cur = conn.cursor()
     df_view_table = df_view_table.drop('news', axis=1)
     df_view_table = df_view_table.drop('issue_score', axis=1)
-    df_view_table = df_view_table.merge(df_scaled[['car_model', 'accident', 'news_count','comm_count','issue_score']],on=['car_model', 'accident'], how='left')
 
     for idx, row in df_view_table.iterrows():
         car_model = row['car_model']
@@ -320,8 +327,8 @@ def lambda_handler(event, context):
     )
     load_news(df_news,batch_period,issue_threshold, conn)
     load_community(df_community, conn)
-    # df_view_table, df_scaled = load_issue_score(df_community, df_news, conn, event)
-    # load_final_table(df_view_table, df_scaled, conn, event)
+    df_view_table, df_scaled = load_issue_score(df_community, df_news, conn, event)
+    load_final_table(df_view_table, df_scaled, conn, event)
 
     return {
         "statusCode": 200,
