@@ -30,7 +30,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
         ])
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
-        df = df.withColumnRenamed("keyword", "car_model").select("car_model", "title", "content", "link")
+        df = df.withColumnRenamed("keyword", "car_model")
         df = df.withColumn(
             'accident',
             F.array(*[
@@ -74,7 +74,9 @@ def score_rdd_generator(partition, param):
             row_with_score['comm_score'] = get_score_from_gpt(
                 car_model=row_with_score['car_model'],
                 accident=row_with_score['accident'],
-                input_text=row_with_score['content'],
+                title = row['title'],
+                content=row_with_score['content'],
+                comment = row['comment'],
                 api_key=api_key,
                 model=model
             )
@@ -84,7 +86,7 @@ def score_rdd_generator(partition, param):
             row_with_score['comm_score'] = 0
             yield row_with_score
 
-def get_score_from_gpt(car_model:str, accident:str, input_text: str, api_key: str, model: str = "gpt-4o-mini") -> int:
+def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, comment, api_key: str, model: str = "gpt-4o-mini") -> int:
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -96,46 +98,27 @@ def get_score_from_gpt(car_model:str, accident:str, input_text: str, api_key: st
             {
                 "role": "user",
                 "content": f"""
-                [뉴스 분석 요청]
-                {input_text}
+                [커뮤니티 분석 요청]
 
                 [할 것]
-                - 위의 뉴스 내용들은 현대자동차 {car_model} 모델의 {accident} 관련한 이슈, 사고를 다루고 있는 내용들이고, 한 이슈에 대한 여러 기사들을 너에게 입력해줬어.
-                - 위의 뉴스 내용을 기반으로 아래 작업을 수행해줘.
-                - 답변은 반드시 한글로 작성되어야 해.
-                - 해당 뉴스에서 아래의 기준에 따라 정수형으로 점수만 반환
-                >> 이슈 심각도: 해당 뉴스가 현대자동차의 브랜드 이미지에 얼마나 타격을 줄만한 뉴스인지 수치화해줘.
-                    - 이슈 심각도를 평가할 때 이슈 심각도를 평가할 때 주로 고려해야 하는 요소들은 다음과 같아.
-                        - 현대차의 직접적 책임 여부 : 차량 결함 vs 운전자 과실
-                        - 사고 규모 : 인명 피해 및 사고 차량 수
-                        - 언론 및 소비자 반응 : 부정적 보도, 여론 형성 여부
-                        - 법적 규제 리스크 : 리콜, 소송, 정부 개입 가능성
-                    - 점수 산정 기준은 다음과 같아.
-                        - 80점 ~ 100점(최악의 상황, 강력한 대응 필수)
-                            - 현대차의 직접적인 책임 : 차량 결함이 명백하고 심각함
-                            - 사고 규모 : 다수의 사망, 중상 사고 발생. 글로벌 뉴스화
-                            - 언론 및 소비자 반응 : 부정적 여론 폭발, 불매 운동 조짐
-                                - 법적 규제 리스크 : 대규모 리콜, 국가 차원의 조사 착수
-                            - 60점 ~ 80점(매우 심각, 신속한 대응 필요)
-                                - 현대차의 책임 가능성 높음 : 일부 논란 있지만 확실한 증거 부족
-                                - 사고 규모 : 사망자는 없지만 중대 사고 발생
-                                - 언론 및 소비자 반응 : 부정적 여론 확산, 브랜드 신뢰 하락 우려
-                                - 법적 규제 리스크 : 리콜 가능성 높음, 당국 조사 진행
-                            - 40점 ~ 60점(주의 요망, 전략적 대응 필요)
-                                - 현대차의 책임 불분명 : 운전자 과실 가능성 존재
-                                - 사고 규모 : 일부 차량 손상 및 경상자 발생
-                                - 언론 및 소비자 반응 : 논란 있지만 대중적 관심 크지 않음
-                                - 법적 규제 리스크 : 리콜 가능성 낮음, 조사는 진행될 수 있음
-                            - 20점 ~ 40점(경미한 이슈, 모니터링 필요)
-                                - 현대차의 책임 낮음 : 외부 요인 가능성 높음
-                                - 사고 규모 : 일부 차량 문제지만 대형 사고 아님
-                                - 언론 및 소비자 반응 : 국지적 논란, 이슈 확산 가능성 낮음
-                                - 법적 규제 리스크 : 리콜 필요 없음, 단순 보상 차원 해결 가능
-                            - 0점 ~ 20점(무시 가능, 영향 미미)
-                                - 현대차의 책임 거의 없음 : 소비자 또는 외부 요인으로 판명
-                                - 사고 규모 : 개별 사례이며 확대 가능성 없음
-                                - 언론 및 소비자 반응 : 온라인 커뮤니티 불만 수준, 확산 가능성 적음
-                                - 법적 규제 리스크 : 리콜, 조사 필요 없음
+                너는 자동차 관련 글에서 특정 차량과 사고 유형에 대한 감성 분석을 수행하는 AI야.
+                주어진 데이터를 기반으로 **차량 모델과 사고 유형**(예: '{car_model}' + '{accident}')에 대한 전체적인 감성을 분석해줘.
+
+                각 행에는 제목(title), 본문(content), 댓글(comment)들이 포함되어 있어.
+                댓글은 ,로 구분되어 있어.
+                이 모든 요소를 종합하여 **해당 차량과 사고 유형에 대한 감성 점수**를 100(매우 부정적)에서 0(매우 긍정적)까지의 범위로 숫자로 평가해줘.
+                50에 가까울수록 중립적이며, 100에 가까울수록 부정적, 0에 가까울수록 긍정적인거야.
+                반환은 반드시 0~100사이의 정수 숫자만 반환하고 아무런 말도 하지마.
+                아래는 분석할 데이터야:
+
+                ---
+                **차량 모델:** {car_model}  
+                **사고 유형:** {accident}  
+                **제목:** {title}  
+                **본문:** {content}  
+                **댓글:** {comment}  
+                
+                ---
                 """
             }
         ],
