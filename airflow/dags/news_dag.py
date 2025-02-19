@@ -1,6 +1,10 @@
 from airflow import DAG
 from airflow.providers.amazon.aws.operators.lambda_function import LambdaInvokeFunctionOperator
 from airflow.providers.amazon.aws.operators.emr import EmrServerlessStartJobOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.operators.python import BranchPythonOperator ## RDS 조회 후 community_dag 실행 여부를 결정
+from airflow.operators.dummy_operator import DummyOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
 import json
@@ -22,6 +26,29 @@ dag = DAG(
     schedule_interval=None,  # test
     catchup=False  # 과거 데이터 재실행 안 함
 )
+
+# RDS에서 is_issue가 True인 데이터 조회하는 Python 함수
+def check_rds_issue(**kwargs):
+    hook = PostgresHook(postgres_conn_id="rds_default")  # MWAA Connection ID 사용
+    conn = hook.get_conn()
+    cursor = conn.cursor()
+
+    query = """
+    SELECT car_model, accident FROM accumulated_table WHERE is_issue = TRUE;
+    """
+    cursor.execute(query)
+    result = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    # 결과가 있다면 XCom에 저장 (community_dag에 넘길 데이터)
+    if result:
+        issue_list = [{"car_model": row[0], "accident": row[1]} for row in result]
+        kwargs['ti'].xcom_push(key='issue_list', value=issue_list)
+        return "trigger_community_dag"  # community_dag 실행 조건 만족
+    else:
+        return "skip_community_dag"  # 실행 조건 불충족
 
 
 # 언론사 리스트
@@ -84,6 +111,50 @@ emr_serverless_task = EmrServerlessStartJobOperator(
     dag=dag
 )
 
+# **RDS 병합 및 업데이트 Lambda 실행 Task 추가**
+lambda_load_news_task = LambdaInvokeFunctionOperator(
+    task_id='invoke_lambda_load_news',
+    function_name='lambda_load_news',
+    payload=json.dumps({
+        "batch_period": "2024-07-02-00-00-00_2024-07-03-00-00-00",  # 테스트용
+        # "batch_period": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
+        "threshold": Variable.get("THRESHOLD", 10),  # 뉴스 이슈 기준 값
+        "dbname": Variable.get("RDS_DBNAME"),
+        "user": Variable.get("RDS_USER"),
+        "password": Variable.get("RDS_PASSWORD"),
+        "url": Variable.get("RDS_HOST"),
+        "port": Variable.get("RDS_PORT"),
+        "bucket_name": Variable.get("S3_BUCKET_NAME")  # S3 버킷 정보
+    }),
+    aws_conn_id=None,
+    region_name='ap-northeast-2',
+    execution_timeout=timedelta(minutes=5),
+    dag=dag
+)
+
+# is_issue가 True인 데이터가 있는지 확인하는 BranchPythonOperator
+check_issue_task = BranchPythonOperator(
+    task_id='check_rds_issue',
+    python_callable=check_rds_issue,
+    provide_context=True,
+    dag=dag
+)
+
+# community_dag 트리거 Task (조건부 실행)
+trigger_community_dag = TriggerDagRunOperator(
+    task_id='trigger_community_dag',
+    trigger_dag_id='community_dag',
+    conf={"issue_list": "{{ ti.xcom_pull(task_ids='check_rds_issue', key='issue_list') }}",
+          "data_interval_start": "{{ data_interval_start }}",
+          "data_interval_end": "{{ data_interval_end }}"},
+    dag=dag
+)
+
+skip_community_dag = DummyOperator(
+    task_id="skip_community_dag",
+    dag=dag
+)
+
 # Lambda 실행 이후 EMR Serverless 실행
-extract_lambda_tasks >> emr_serverless_task
+extract_lambda_tasks >> emr_serverless_task >> lambda_load_news_task >> check_issue_task >> [trigger_community_dag, skip_community_dag]
 
