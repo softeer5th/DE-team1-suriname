@@ -179,77 +179,6 @@ def load_final_table(df_view_table, conn, event) :
     conn.commit()
     cur.close()
     conn.close()
-
-def load_news(df:pd.DataFrame, batch_period:str, issue_threshold:int, conn)->bool:
-    cursor = conn.cursor()
-    start_batch_time, last_batch_time = batch_period.split('_')
-    for idx, row in df.iterrows():
-        car_model = row['car_model']
-        accident = row['accident']
-        batch_count = row['count']
-        news_json = row['news']
-        news_score = row['avg_news_score']
-        
-        merge_batch_query = f"""
-        UPDATE accumulated_table
-        SET start_batch_time = CASE
-            WHEN news_acc_count = 0 THEN TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS')
-            ELSE start_batch_time
-        END,
-        news_acc_count = news_acc_count + {batch_count} ,
-        last_batch_time = TO_TIMESTAMP('{last_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') ,
-        news = jsonb_set(
-            news,
-            '{{news}}',
-            COALESCE(news->'news', '[]'::jsonb) || '{news_json}'::jsonb ) ,
-        news_score = {news_score}
-        WHERE car_model = '{car_model}'
-            AND accident = '{accident}';
-        """
-        try:
-            cursor.execute(merge_batch_query)
-        except Exception as e:
-            print(f"Error executing query: {e}")
-            conn.rollback()
-            return False
-
-    
-    clear_alert_column_query = f"""
-        UPDATE accumulated_table
-        SET is_alert = FALSE;
-    """
-
-    clear_dead_issue_query = f"""
-        UPDATE accumulated_table
-        SET news_acc_count = 0,
-            is_issue = FALSE,
-            is_alert = FALSE,
-            start_batch_time = NULL,
-            last_batch_time = NULL,
-            news_score = 0,
-            comm_score = 0,
-            issue_score = 0,
-            comm_acc_count = 0,
-            news = '{{"news":[]}}'::jsonb
-        WHERE CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul' - TO_TIMESTAMP('{start_batch_time}', 'YYYY-MM-DD-HH24-MI-SS') > '1 day';
-    """
-
-    set_issue_query = f""" 
-        UPDATE accumulated_table
-        SET is_issue = TRUE,
-        is_alert = TRUE
-        WHERE news_acc_count >= {issue_threshold} and is_issue = FALSE;
-    """
-    try:
-        cursor.execute(clear_alert_column_query)
-        # cursor.execute(clear_dead_issue_query)
-        cursor.execute(set_issue_query)
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        conn.rollback()
-        # return False
-    conn.commit()
-    cursor.close()
     
 def load_community(df:pd.DataFrame, conn):
     cur = conn.cursor()
@@ -329,7 +258,6 @@ def lambda_handler(event, context):
         host= event["url"],
         port= event["port"], 
     )
-    load_news(df_news,batch_period,issue_threshold, conn)
     load_community(df_community, conn)
     df_view_table = load_issue_score(df_community, df_news, conn, event)
     load_final_table(df_view_table, conn, event)

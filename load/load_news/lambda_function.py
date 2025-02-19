@@ -8,7 +8,7 @@ import pyarrow.parquet as pq
 # AWS 클라이언트 설정
 s3_client = boto3.client("s3")
 
-def load_news(df:pd.DataFrame, batch_period:str, issue_threshold:int, conn)->bool:
+def load_news(df:pd.DataFrame, batch_period:str, issue_threshold:int, conn):
     cursor = conn.cursor()
     start_batch_time, last_batch_time = batch_period.split('_')
     for idx, row in df.iterrows():
@@ -39,7 +39,7 @@ def load_news(df:pd.DataFrame, batch_period:str, issue_threshold:int, conn)->boo
         except Exception as e:
             print(f"Error executing query: {e}")
             conn.rollback()
-            return False
+
 
     
     clear_alert_column_query = f"""
@@ -75,7 +75,7 @@ def load_news(df:pd.DataFrame, batch_period:str, issue_threshold:int, conn)->boo
     except Exception as e:
         print(f"Error executing query: {e}")
         conn.rollback()
-        # return False
+
     conn.commit()
     cursor.close()
     
