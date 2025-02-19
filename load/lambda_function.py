@@ -100,7 +100,7 @@ def load_issue_score(df_community, df_news, conn, event) :
 
     # 조인 후, 해당 키에 맞는 값이 없으면 NaN이 생기므로 0으로 채움
     df_scaled['count'] = df_scaled['count'].fillna(0)
-    df_view_table['comm_count'] = df_view_table['comm_count'].fillna(0)
+    df_view_table['count'] = df_view_table['count'].fillna(0)
 
     df_scaled = df_scaled.rename(columns={'count': 'news_count'})
     df_view_table = df_view_table.rename(columns={'count': 'news_count'})
