@@ -5,6 +5,8 @@ import pandas as pd
 import io
 import numpy as np 
 import pyarrow.parquet as pq
+import datetime
+
 # AWS 클라이언트 설정
 s3_client = boto3.client("s3")
 WEIGHTS = {
@@ -168,13 +170,14 @@ def load_final_table(df_view_table, conn, event) :
         comm_count = row['comm_count']
         news_count = row['news_count']
         start_batch_time = row['start_batch_time']
-        created_time = event["batch_period"].split('_')[1]
+        batch_time  = event["batch_period"].split('_')[1]
+        batch_time_dt = datetime.datetime.strptime(batch_time, '%Y-%m-%d-%H-%M-%S')
 
         insert_query = """
-        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, created_time)
+        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, created_time))
+        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time_dt))
 
     conn.commit()
     cur.close()
@@ -249,8 +252,7 @@ def lambda_handler(event, context):
     else :
         df_community = pd.DataFrame(columns=['car_model', 'accident', 'comm_count'])
 
-    batch_period = event["batch_period"]
-    issue_threshold = event["threshold"]
+
     conn = psycopg2.connect(
         dbname= event["dbname"], 
         user= event["user"], 
