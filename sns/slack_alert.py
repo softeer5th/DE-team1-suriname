@@ -60,7 +60,6 @@ def build_payload(text, issue: dict) -> dict:
 
 
 def send_message(webhook_url: str, payload):
-    slack_token = "V2334HTEusGFFz09Z7xq6Fqe"
     response = http.request(
         'POST',
         webhook_url,
