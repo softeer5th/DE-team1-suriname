@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.providers.amazon.aws.hooks.lambda_function import LambdaHook
 from airflow.providers.amazon.aws.operators.lambda_function import LambdaInvokeFunctionOperator as BaseLambdaInvokeFunctionOperator
+from airflow.providers.amazon.aws.operators.emr import EmrServerlessStartJobOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
@@ -8,6 +9,8 @@ import json
 import ast
 import hashlib
 from botocore.config import Config
+import json
+import base64
 
 # ✅ Lambda 실행 시 타임아웃 문제 해결을 위한 커스텀 오퍼레이터
 class LambdaInvokeFunctionOperator(BaseLambdaInvokeFunctionOperator):
@@ -54,10 +57,13 @@ def process_issue_list(**kwargs):
         issue_list = ast.literal_eval(issue_list)
 
     unique_car_models = list(set(item['car_model'] for item in issue_list))  # 중복 제거
+    # unique_car_models = ['그랜저', '아반떼', '쏘나타'] # test
     # Variable에 저장 (덮어쓰기 가능성 있음)
     Variable.set("unique_car_models", json.dumps(unique_car_models, ensure_ascii=False))
     data_interval_start = kwargs['dag_run'].conf.get('data_interval_start', None)
     data_interval_end = kwargs['dag_run'].conf.get('data_interval_end', None)
+    Variable.set("data_interval_start", data_interval_start)
+    Variable.set("data_interval_end", data_interval_end)
 
     print("Received issue list:", issue_list)
     print("Execution time window:", data_interval_start, "to", data_interval_end)
@@ -111,6 +117,81 @@ for community in communities:
         )
         extract_lambda_tasks.append(lambda_task)
 
+s3_community_data = Variable.get("S3_COMMUNITY_DATA", "s3a://aws-seoul-suriname/data/community/")
+s3_community_output = Variable.get("S3_COMMUNITY_OUTPUT", "s3a://aws-seoul-suriname/data/community/output/")
+accident_keyword_original = Variable.get("ACCIDENT_KEYWORD")
+encoded_value = base64.b64encode(json.dumps(accident_keyword_original, ensure_ascii=False).encode('utf-8')).decode('utf-8')
+Variable.set("ACCIDENT_KEYWORD_ENCODED", encoded_value)
+accident_keyword = Variable.get("ACCIDENT_KEYWORD_ENCODED")
+gpt = Variable.get("GPT")
+
+
+entryPointArguments = [
+    "--data_source", s3_community_data,
+    "--output_uri", s3_community_output,
+    # "--batch_period", "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
+    "--batch_period", "2024-07-02-00-00-00_2024-07-02-06-00-00", # test
+    "--accident_keyword", accident_keyword,
+    "--gpt", gpt
+]
+
+# **EMR Serverless 실행 Task**
+emr_serverless_task = EmrServerlessStartJobOperator(
+    task_id='run_community_emr_transform',
+    application_id=Variable.get("EMR_APPLICATION_ID"),  # MWAA Variable에서 가져옴
+    execution_role_arn="arn:aws:iam::572660899671:role/service-role/AmazonEMR-ExecutionRole-1739724269830",  # EMR 실행 역할
+    job_driver={
+        "sparkSubmit": {
+            "entryPoint": Variable.get("COMMUNITY_ENTRY_POINT"),  # S3에 저장된 Spark 실행 코드
+            "entryPointArguments": entryPointArguments,
+            "sparkSubmitParameters": "--conf spark.executor.memory=4g --conf spark.driver.memory=2g"
+        }
+    },
+    configuration_overrides={},
+    aws_conn_id=None,
+    dag=dag
+)
+
+# **RDS 병합 및 업데이트 + 이슈주의도 calculate + view table append Lambda 실행 Task 추가**
+lambda_load_community_task = LambdaInvokeFunctionOperator(
+    task_id='invoke_lambda_load_community',
+    function_name='lambda_rds_update_news',
+    payload=json.dumps({
+        "batch_period": "2024-07-02-00-00-00_2024-07-02-06-00-00",  # 테스트용
+        # "batch_period": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
+        "dbname": Variable.get("RDS_DBNAME"),
+        "user": Variable.get("RDS_USER"),
+        "password": Variable.get("RDS_PASSWORD"),
+        "url": Variable.get("RDS_HOST"),
+        "port": Variable.get("RDS_PORT"),
+        "bucket_name": Variable.get("S3_BUCKET_NAME")  # S3 버킷 정보
+    }),
+    aws_conn_id=None,
+    region_name='ap-northeast-2',
+    execution_timeout=timedelta(minutes=5),
+    dag=dag
+)
+
+# Slack Alert Task
+send_slack_alert = LambdaInvokeFunctionOperator(
+    task_id='send_slack_alert',
+    function_name='lambda_slack_alert',
+    payload=json.dumps({
+        "dbname": Variable.get("RDS_DBNAME"),
+        "user": Variable.get("RDS_USER"),
+        "password": Variable.get("RDS_PASSWORD"),
+        "url": Variable.get("RDS_HOST"),
+        "port": Variable.get("RDS_PORT"),
+        "webhook_url": Variable.get("USER_WEBHOOK_URL")
+    }),
+    aws_conn_id=None,
+    region_name='ap-northeast-2',
+    execution_timeout=timedelta(minutes=5),
+    dag=dag
+)
+
+
+
 
 # DAG 실행 순서 설정
-process_issue_task >> extract_lambda_tasks
+process_issue_task >> extract_lambda_tasks >> emr_serverless_task >> lambda_load_community_task >> send_slack_alert

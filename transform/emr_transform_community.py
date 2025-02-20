@@ -1,19 +1,21 @@
 from functools import partial
-
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
-import conf
-import psycopg2
-import requests
+# import conf
+import urllib.request
+import json
+import argparse
+import ast
+import base64
 
-def transform(data_source:str, output_uri:str, batch_period:str)-> None:
+def transform(data_source:str, output_uri:str, batch_period:str, accident_keyword:str, gpt)-> None:
     with (
         SparkSession.builder.appName(f"transform news at {batch_period}").config("spark.driver.bindAddress", "0.0.0.0")
                 .config("spark.sql.session.timeZone", "UTC")
                 # 로컬에서 코드를 실행시킬때 config 적용
-                .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-                .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
+                # .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+                # .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
                 .getOrCreate()as spark
     ):
         
@@ -29,13 +31,18 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             StructField('keyword', StringType(), True)
         ])
 
+        # base64 디코딩
+        accident_keyword = json.loads(base64.b64decode(accident_keyword).decode('utf-8'))
+      
+        accident_keyword = ast.literal_eval(accident_keyword)
+
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
         df = df.withColumnRenamed("keyword", "car_model")
         df = df.withColumn(
             'accident',
             F.array(*[
                 F.when(F.col('title').contains(accident) | F.col('content').contains(accident), accident)
-                for accident in conf.ACCIDENT_KEYWORD
+                for accident in accident_keyword
             ])
         )
 
@@ -48,7 +55,8 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             .filter(F.col("accident").isNotNull())
 
         score_schema = df_exploded.schema.add('comm_score', IntegerType(), True)
-        score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = conf.GPT))
+        gpt = json.loads(gpt)
+        score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = gpt))
         scored_df = score_rdd.toDF(score_schema).cache()
 
         grouped_df = scored_df.groupBy("car_model", "accident").agg(
@@ -61,7 +69,7 @@ def transform(data_source:str, output_uri:str, batch_period:str)-> None:
             F.avg("comm_score").alias("avg_comm_score")
         )
         grouped_df.show()
-        grouped_df.rdd.foreachPartition(partial(merge_batch_into_main_table, param = conf.RDS_PROPERTY))
+
         grouped_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
@@ -125,9 +133,14 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, com
         "temperature": 0.2
     }
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+        req = urllib.request.Request(
+            url, 
+            data=json.dumps(payload).encode('utf-8'),
+            headers=headers,
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
 
         content = data["choices"][0]["message"]["content"].strip()
         score = int(content)
@@ -137,47 +150,21 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, com
         print(f"Error while calling API: {e}. score set to 0.")
         return 0
 
-def merge_batch_into_main_table(partition, param):
-    conn = psycopg2.connect(
-        dbname= param["dbname"],
-        user=param["user"],
-        password=param["password"],
-        host=param["url"],
-        port=param["port"],
-    )
-    cur = conn.cursor()
-
-    for row in partition:
-        query = f"""
-        UPDATE accumulated_table
-        SET comm_score = {row['avg_comm_score']} ,
-            comm_acc_count = COALESCE(comm_acc_count, 0) + {row['count']}
-        WHERE car_model = '{row['car_model']}'
-            AND accident = '{row['accident']}';
-        """
-        try:
-            cur.execute(query)
-        except Exception as e:
-            print(f"Error executing query: {e}")
-            conn.rollback()
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
 if __name__ == "__main__":
 
     # 로컬에서 사용 시 주석 해제
-    data_source = conf.S3_COMMUNITY_DATA
-    output_uri = conf.S3_COMMUNITY_OUTPUT
-    batch_period = conf.S3_COMMUNITY_BATCH_PERIOD
-    transform(data_source, output_uri, batch_period)
+    # data_source = conf.S3_COMMUNITY_DATA
+    # output_uri = conf.S3_COMMUNITY_OUTPUT
+    # batch_period = conf.S3_COMMUNITY_BATCH_PERIOD
+    # transform(data_source, output_uri, batch_period)
 
     # EMR에서 실행할 때 주석 해제
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--data_source", help="s3 data uri")
-    # parser.add_argument("--output_uri", help="s3 output uri")
-    # parser.add_argument("--batch_period", help="batch period")
-    # args = parser.parse_args()
-    #
-    # transform(args.data_source, args.output_uri, args.batch_period)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_source", help="s3 data uri")
+    parser.add_argument("--output_uri", help="s3 output uri")
+    parser.add_argument("--batch_period", help="batch period")
+    parser.add_argument("--accident_keyword", help="accident keyword")
+    parser.add_argument("--gpt", help="gpt information")
+    args = parser.parse_args()
+    
+    transform(args.data_source, args.output_uri, args.batch_period, args.accident_keyword, args.gpt)

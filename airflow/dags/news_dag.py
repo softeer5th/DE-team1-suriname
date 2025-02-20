@@ -101,7 +101,7 @@ emr_serverless_task = EmrServerlessStartJobOperator(
     execution_role_arn="arn:aws:iam::572660899671:role/service-role/AmazonEMR-ExecutionRole-1739724269830",  # EMR 실행 역할
     job_driver={
         "sparkSubmit": {
-            "entryPoint": Variable.get("ENTRY_POINT"),  # S3에 저장된 Spark 실행 코드
+            "entryPoint": Variable.get("NEWS_ENTRY_POINT"),  # S3에 저장된 Spark 실행 코드
             "entryPointArguments": entryPointArguments,
             "sparkSubmitParameters": "--conf spark.executor.memory=4g --conf spark.driver.memory=2g"
         }
