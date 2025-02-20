@@ -7,6 +7,7 @@ from airflow.operators.python import BranchPythonOperator ## RDS 조회 후 comm
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
+from plugins.slack_alert_develop import slack_failure_alert
 import json
 import base64
 
@@ -15,7 +16,8 @@ default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
     'start_date': datetime(2024, 1, 1),
-    'retries': 1
+    'retries': 1,
+    'on_failure_callback': slack_failure_alert
 }
 
 # DAG 정의

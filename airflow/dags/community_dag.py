@@ -4,6 +4,7 @@ from airflow.providers.amazon.aws.operators.lambda_function import LambdaInvokeF
 from airflow.providers.amazon.aws.operators.emr import EmrServerlessStartJobOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
+from plugins.slack_alert_develop import slack_failure_alert
 from datetime import datetime, timedelta
 import json
 import ast
@@ -38,7 +39,8 @@ default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
     'start_date': datetime(2024, 1, 1),
-    'retries': 1
+    'retries': 1,
+    'on_failure_callback': slack_failure_alert
 }
 
 dag = DAG(
