@@ -1,10 +1,12 @@
 import json
 import urllib3
 import psycopg2
-from datetime import datetime
+
 # Slack Webhook URL
 http = urllib3.PoolManager()
-def build_payload(text, issue:dict)->dict:       
+
+
+def build_payload(text, issue: dict) -> dict:
     # 30 -> 관심
     # 60 -> 주의
     # 100 -> 긴급
@@ -22,42 +24,42 @@ def build_payload(text, issue:dict)->dict:
     else:
         issue_payload_param["color"] = "#FF0000"
         issue_payload_param["level_value"] = "긴급 🚨"
-    
+
     payload = \
-    {
-        "text": text,  # 메시지 내용
-        ""
-        "attachments": 
-        [{
-            "color": issue_payload_param["color"],  # 메시지 강조 색상 (빨간색)
-            "fields": 
-            [
-                {
-                    "title": "이슈 주의도", 
-                    "value": issue_payload_param["level_value"], 
-                    "short": False
-                    },
-                {
-                    "title": "이슈 내용", 
-                    "value": f"{issue_payload_param["car_model"]} {issue_payload_param["accident"]}", 
-                    "short": False
-                    },
-                {
-                    "title": "이슈 최초 발생", 
-                    "value": issue_payload_param["initial_issue_time"], 
-                    "short": False
-                    },
-                {
-                    "title": "대시보드 링크", 
-                    "value": issue_payload_param["dashboard_url"], 
-                    "short": False
-                    }
-            ]
-        }]
-    }
+        {
+            "text": f"🚨 {issue_payload_param['car_model']} {issue_payload_param['accident']} ({issue_payload_param['level_value']})\n\u200b",
+            "attachments":
+                [{
+                    "color": issue_payload_param["color"],  # 메시지 강조 색상 (빨간색)
+                    "fields":
+                        [
+                            {
+                                "title": "이슈 주의도",
+                                "value": issue_payload_param["level_value"],
+                                "short": False
+                            },
+                            {
+                                "title": "이슈 내용",
+                                "value": f"{issue_payload_param["car_model"]} {issue_payload_param["accident"]}",
+                                "short": False
+                            },
+                            {
+                                "title": "이슈 최초 발생",
+                                "value": issue_payload_param["initial_issue_time"],
+                                "short": False
+                            },
+                            {
+                                "title": "대시보드 링크",
+                                "value": issue_payload_param["dashboard_url"],
+                                "short": False
+                            }
+                        ]
+                }]
+        }
     return payload
 
-def send_message(webhook_url:str, payload):
+
+def send_message(webhook_url: str, payload):
     slack_token = "V2334HTEusGFFz09Z7xq6Fqe"
     response = http.request(
         'POST',
@@ -65,29 +67,33 @@ def send_message(webhook_url:str, payload):
         body=json.dumps(payload),
         headers={
             'Content-Type': 'application/json'
-            }
+        }
     )
     if response.status != 200:
+        print("failed")
         return {
             "statusCode": 400,
-            "body": json.dumps(f"Request to Slack returned an error {response.status}, the response is:\n{response.data}"),
+            "body": json.dumps(
+                f"Request to Slack returned an error {response.status}, the response is:\n{response.data}"),
             "msg": payload["text"]
         }
     else:
+        print("success")
         return {
             "statusCode": 200,
             "body": json.dumps("Message was successfuly sent to Slack."),
             "msg": payload["text"]
         }
-    
-def get_alert_issue(event)->list[dict]:
+
+
+def get_alert_issue(event) -> list[dict]:
     alert_issue_list = []
     conn = psycopg2.connect(
-        dbname= event["dbname"], 
-        user= event["user"], 
-        password= event["password"],
-        host= event["url"],
-        port= event["port"]
+        dbname=event["dbname"],
+        user=event["user"],
+        password=event["password"],
+        host=event["url"],
+        port=event["port"]
     )
     cursor = conn.cursor()
     get_alert_issue_query = f"""
@@ -107,6 +113,7 @@ def get_alert_issue(event)->list[dict]:
     cursor.close()
     conn.close()
     return result
+
 
 def lambda_handler(event, context):
     webhook_url = event['webhook_url']
