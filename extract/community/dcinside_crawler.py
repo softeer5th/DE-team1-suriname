@@ -188,7 +188,14 @@ class DCInsideCrawler:
         post_contents = []
         
         # 순차적으로 크롤링 수행
+        i = 0
         for url in urls:
+            if i % 5 == 0:
+                i = 0
+                time.sleep(1)
+            else :
+                i += 1
+                
             post_content = self._get_single_post_content(driver,url)
             post_contents.append(post_content)
 
