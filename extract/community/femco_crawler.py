@@ -68,8 +68,8 @@ class FemcoCrawler:
         res_list = []
         for url in url_list:
             self.driver.get(url)
-            soup = BeautifulSoup(self.driver.page_source, "html.parser")
             time.sleep(2)
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
             try:
                 top_element = soup.select_one("div.top_area.ngeb")
                 post_time = datetime.strptime(top_element.select_one("span.date.m_no").text, "%Y.%m.%d %H:%M")
