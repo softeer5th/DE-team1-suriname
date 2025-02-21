@@ -35,18 +35,15 @@ def upload_df_to_s3(df, bucket_name, object_name):
 def lambda_handler(event, context):
     try:
         # 요청 객체 생성
-        request = CommunityRequest(keyword=event.get('keyword'), 
-                                   start_time=datetime.strptime(event.get('start_time_str'), "%Y-%m-%dT%H:%M"), 
+        request = CommunityRequest(start_time=datetime.strptime(event.get('start_time_str'), "%Y-%m-%dT%H:%M"), 
                                    end_time=datetime.strptime(event.get('end_time_str'), "%Y-%m-%dT%H:%M")) 
         
         community = event.get('community')
-        keyword = request['keyword']
         start_time = request['start_time']
         end_time = request['end_time']
 
 
         if not community: return {'statusCode': 400, 'body': json.dumps('Error: community is not specified.')}
-        if not keyword: return {'statusCode': 400, 'body': json.dumps('Error: Keyword is not specified.')}
         if not start_time: return {'statusCode': 400, 'body': json.dumps('Error: Start datetime is not specified.')}
         if not end_time: return {'statusCode': 400, 'body': json.dumps('Error: End datetime is not specified.')}
 
@@ -61,10 +58,10 @@ def lambda_handler(event, context):
         df = crawler.start_crawling()
 
         if df.empty:
-            return {'statusCode': 500, 'body': json.dumps(f"[ERROR] No data collected for {request['keyword']}.")}
+            return {'statusCode': 500, 'body': json.dumps(f"[ERROR] No data collected.")}
 
         # S3 업로드
-        object_key = f"data/community/{start_time.strftime('%Y-%m-%d-%H-%M-%S')}_{end_time.strftime('%Y-%m-%d-%H-%M-%S')}/{keyword}_{community}.parquet"
+        object_key = f"data/community/{start_time.strftime('%Y-%m-%d-%H-%M-%S')}_{end_time.strftime('%Y-%m-%d-%H-%M-%S')}/{community}.parquet"
 
         upload_result, msg = upload_df_to_s3(df, BUCKET_NAME, object_key)
 
@@ -73,7 +70,7 @@ def lambda_handler(event, context):
 
         # 크롤링 완료 마커 업로드
         done_key = f"data/community/marker/{community}.done"
-        upload_df_to_s3(pd.DataFrame([{'keyword': request['keyword'], 'start_time': request['start_time'], 'end_time': request['end_time']}]), BUCKET_NAME, done_key)
+        upload_df_to_s3(pd.DataFrame([{'start_time': request['start_time'], 'end_time': request['end_time']}]), BUCKET_NAME, done_key)
 
         return {'statusCode': 200, 'body': json.dumps(msg)}
     

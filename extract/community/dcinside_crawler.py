@@ -9,14 +9,14 @@ from bs4 import BeautifulSoup
 import time
 import pandas as pd
 from tempfile import mkdtemp
-import urllib.parse
+import requests
 import itertools
 import pytz
 
 from type.community_crawler import CommunityRequest, CommunityResponse
 
-MAX_PAGE_ACCESS = 4 # 한 페이지에 크롤링을 시도하는 최대 횟수
-WAIT_TIME = 2 # 페이지 로드를 기다리는 시간
+MAX_PAGE_ACCESS = 2 # 한 페이지에 크롤링을 시도하는 최대 횟수
+WAIT_TIME = 1 # 페이지 로드를 기다리는 시간
 
 
 # 크롬 드라이버 경로 설정
@@ -48,7 +48,9 @@ class DCInsideCrawler:
         self.request = request
         self.start_time = request["start_time"]
         self.end_time = request["end_time"]
-        self.keyword = request["keyword"]
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
 
     def init_driver(self):
         service = Service(chrome_driver_path) # lambda 전환 시 바꿔야 함
@@ -59,13 +61,12 @@ class DCInsideCrawler:
     def start_crawling(self, num_processes=1):
         driver = self.init_driver()
 
-        encoded_query = urllib.parse.quote(self.keyword).replace('%', '.')
-        base_url = "https://gall.dcinside.com/board/lists/?s_type=search_subject_memo&id=car_new1&s_keyword={}"
-        initial_search_url = base_url.format(encoded_query)
-        cur_search_url = self._get_start_url(driver, initial_search_url)
+        base_url = "https://gall.dcinside.com/board/lists?id=car_new1"
+        # cur_search_url = self._get_start_url(driver, base_url)
+        cur_search_url = base_url
 
         total_df = pd.DataFrame(
-            columns=['post_time', 'title', 'content', 'comment', 'view_count', 'like_count', 'source', 'link', 'keyword']
+            columns=['post_time', 'title', 'content', 'view_count', 'like_count', 'source', 'link']
         )
 
         while True: # start_datetime이 될 때까지 반복
@@ -81,7 +82,7 @@ class DCInsideCrawler:
 
             if len(batch_df) != 0:
                 last_post_datetime = batch_df.iloc[-1]['post_time']
-                print(batch_df.iloc[-1])
+                # print(batch_df.iloc[-1])
 
             if stop_flag:
                 print("[INFO] 전체 크롤링 종료\n")
@@ -123,7 +124,7 @@ class DCInsideCrawler:
         for _ in range(MAX_PAGE_ACCESS):
             try:
                 soup = self._get_url_soup(driver, search_url)
-                search_next_element = soup.select_one('div.bottom_paging_box.iconpaging a.search_next')
+                search_next_element = soup.select_one('div.bottom_paging_box.iconpaging a.sp_pagingicon.page_next')
                 next_search_url = "https://gall.dcinside.com" + search_next_element.get('href')
                 return next_search_url
             except Exception as e:
@@ -187,7 +188,14 @@ class DCInsideCrawler:
         post_contents = []
         
         # 순차적으로 크롤링 수행
+        i = 0
         for url in urls:
+            if i % 5 == 0:
+                i = 0
+                time.sleep(1)
+            else :
+                i += 1
+                
             post_content = self._get_single_post_content(driver,url)
             post_contents.append(post_content)
 
@@ -196,7 +204,7 @@ class DCInsideCrawler:
 
         post_contents_df = pd.DataFrame(
             post_contents,
-            columns=['post_time', 'title', 'content', 'comment', 'view_count', 'like_count', 'source', 'link', 'keyword']
+            columns=['post_time', 'title', 'content', 'view_count', 'like_count', 'source', 'link']
         )
         
         return post_contents_df
@@ -221,16 +229,6 @@ class DCInsideCrawler:
                 body_elements = body_elements[:-len("- dc official App")].strip()
             return body_elements
         
-        # 댓글 크롤링
-        def _get_post_comments(soup):
-            comment_elements = soup.select("p.usertxt.ub-word")
-            if not comment_elements:
-                return []
-            comments = [
-                el.text[:-len("- dc App")].strip() if el.text.endswith("- dc App") else el.text
-                for el in comment_elements
-            ]
-            return comments
         
         # 추천/비추천 크롤링
         def _get_post_up_down(soup):
@@ -250,12 +248,12 @@ class DCInsideCrawler:
         view_count = 0
         like_count = 0
         body = None
-        comments = []
 
         for _ in range(MAX_PAGE_ACCESS):
             try:
-                soup = self._get_url_soup(driver, url)
-                
+                response = requests.get(url, headers=self.headers)
+                soup = BeautifulSoup(response.text, "html.parser")
+
                 # 제목 크롤링
                 title_element = soup.select_one('h3.title.ub-word span.title_subject')
                 title = title_element.text if title_element else "Untitled"
@@ -270,7 +268,7 @@ class DCInsideCrawler:
 
                 # 조회수 크롤링 (정수 변환)
                 try:
-                    _, view_count, _, _, _, num_comments = soup.select("div.fr")[1].text.split()
+                    _, view_count, _, _, _, _ = soup.select("div.fr")[1].text.split()
                     view_count = int(view_count.replace(',', ''))
                 except (ValueError, IndexError):
                     view_count = 0
@@ -279,9 +277,6 @@ class DCInsideCrawler:
                 body = _get_post_body(soup)
                 if not body:
                     raise Exception("본문 크롤링 실패")
-
-                # 댓글 크롤링 (List[CommunityComment] 형태)
-                comments = _get_post_comments(soup)
 
                 # 추천 / 비추천 크롤링
                 like_count, _ = _get_post_up_down(soup)
@@ -300,10 +295,8 @@ class DCInsideCrawler:
             post_time=post_time,
             title=title,
             content=body,
-            comment=comments,
             view_count=view_count,
             like_count=like_count,
             source='dcinside',
             link=url,
-            keyword=self.keyword
         )
