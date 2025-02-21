@@ -13,7 +13,7 @@ class FemcoCrawler:
     def __init__(self, request:CommunityRequest = None, is_lambda=True):
         self.request = request
         self.is_lambda = is_lambda
-        self.driver = None
+        self.driver = self.init_driver()
         self.article_base_url = "https://www.fmkorea.com"
         self._page_search_base_url = "https://www.fmkorea.com/index.php?mid=car&listStyle=list&page="
         self.headers = {
@@ -24,6 +24,18 @@ class FemcoCrawler:
     def init_driver(self):
         options = Options()
         options.add_argument("--headless")  # 헤드리스 모드
+        # options.add_argument("--disable-gpu")  # GPU 비활성화
+        # options.add_argument("--window-size=1920x1080")  # 화면 크기 설정
+        # options.add_argument("--no-sandbox")  # 샌드박스 비활성화
+        # options.add_argument("--disable-dev-shm-usage")  # /dev/shm 사용 비활성화
+        # options.add_argument("--disable-dev-tools")
+        # options.add_argument("--no-zygote")
+        # # options.add_argument("--single-process")
+        # options.add_argument(f"--user-data-dir={mkdtemp()}")
+        # options.add_argument(f"--data-path={mkdtemp()}")
+        # options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+        # options.add_argument("--remote-debugging-pipe")
+        # options.add_argument("--verbose")
         if self.is_lambda:
             chrome_driver_path = "/opt/chrome-driver/chromedriver-linux64/chromedriver" # lambda
             chrome_path = "/opt/chrome/chrome-linux64/chrome"
@@ -34,7 +46,7 @@ class FemcoCrawler:
             options.add_argument("--disable-dev-shm-usage")  # /dev/shm 사용 비활성화
             options.add_argument("--disable-dev-tools")
             options.add_argument("--no-zygote")
-            options.add_argument("--single-process")
+            # options.add_argument("--single-process")
             options.add_argument(f"--user-data-dir={mkdtemp()}")
             options.add_argument(f"--data-path={mkdtemp()}")
             options.add_argument(f"--disk-cache-dir={mkdtemp()}")
@@ -86,7 +98,7 @@ class FemcoCrawler:
                     self.driver.quit()
                     response = requests.get(url, headers=self.headers)
             if response.status_code != 200:
-                print(f"Error : {url} is not available")
+                print(f"Error {response.status_code}: {url} is not available")
                 continue
             else:
                 try:
