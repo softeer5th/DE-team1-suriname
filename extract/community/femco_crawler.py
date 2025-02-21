@@ -10,10 +10,9 @@ import requests
 import time
 
 class FemcoCrawler:
-    def __init__(self, request:CommunityRequest = None, is_lambda=True):
+    def __init__(self, request:CommunityRequest = None):
         self.request = request
-        self.is_lambda = is_lambda
-        self.driver = None
+        self.driver = self.init_driver()
         self.article_base_url = "https://www.fmkorea.com"
         self._page_search_base_url = "https://www.fmkorea.com/index.php?mid=car&listStyle=list&page="
         self.headers = {
@@ -67,7 +66,7 @@ class FemcoCrawler:
 
 
     def start_crawling_by_range(self, start_page:int, end_page:int, is_page_search=True)->list:
-        self.driver = self.init_driver()
+        # self.driver = self.init_driver()
         url_list = self.get_url_list(start_page, end_page, is_page_search=is_page_search)
         res_list = []
         MAX_RETRIES = 3
@@ -80,9 +79,9 @@ class FemcoCrawler:
                 else:
                     print(f"retry {retry_count} : {url}")
                     retry_count += 1
-                    self.driver = self.init_driver()
+                    # self.driver = self.init_driver()
                     self.get_url_list(start_page, start_page)
-                    self.driver.quit()
+                    # self.driver.quit()
                     response = requests.get(url, headers=self.headers)
             if response.status_code != 200:
                 print(f"Error : {url} is not available")
