@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 from tempfile import mkdtemp
 from datetime import datetime
 import pandas as pd
-import requests
 import time
 
 class FemcoCrawler:
@@ -50,20 +49,16 @@ class FemcoCrawler:
     def start_crawling(self)->pd.DataFrame:
         page = 1
         results = []
-        flag = True
+        flag = False
         while True:
             page_result = self.start_crawling_by_range(page, page, False)
-            for result in page_result:
-                if self.request["start_time"] <= result["post_time"] < self.request["end_time"]:
-                    results.append(result)
-                elif result["post_time"] < self.request["start_time"]:
-                    flag = False
-            if not flag:
+            if flag == True and len(page_result) == 0:
                 break
-            else:
-                page += 1
+            if len(page_result) != 0:
+                flag = True
+                results.extend(page_result)
+            page += 1
         df = pd.DataFrame(results,columns=["post_time", "title", "content", "view_count", "like_count", "source", "link"])
-
         return df
 
 
@@ -71,34 +66,11 @@ class FemcoCrawler:
         self.driver = self.init_driver()
         url_list = self.get_url_list(start_page, end_page, is_page_search=is_page_search)
         res_list = []
-        MAX_RETRIES = 3
         for url in url_list:
-            retry_count = 0
-            session = requests.Session()
-            response = session.get(url, headers=self.headers)
-            # response = requests.get(url, headers=self.headers)
-            print(session.cookies.get_dict())
-            while retry_count < MAX_RETRIES:
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    break
-                else:
-                    print(f"retry {retry_count} : {url} status: {response.status_code}")
-                    retry_count += 1
-                    # self.driver = self.init_driver()
-                    # self.get_url_list(start_page, start_page)
-                    # self.driver.quit()
-                    # response = requests.get(url, headers=self.headers)
-                    self.driver.get(url)
-                    soup = BeautifulSoup(self.driver.page_source, "html.parser")
-                    time.sleep(4)
-                    break
-            # if response.status_code != 200:
-            #     print(f"Error {response.status_code}: {url} is not available")
-            #     continue
-            # else:
+            self.driver.get(url)
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
+            time.sleep(2)
             try:
-                # soup = BeautifulSoup(response.text, "html.parser")
                 top_element = soup.select_one("div.top_area.ngeb")
                 post_time = datetime.strptime(top_element.select_one("span.date.m_no").text, "%Y.%m.%d %H:%M")
                 if is_page_search:
@@ -155,12 +127,23 @@ class FemcoCrawler:
 
     def _get_url(self, search_url:str)->list:
         """해당 페이지의 모든 게시글 링크 list 반환"""
+        s_time = self.request["start_time"].time()
+        e_time = self.request["end_time"].time()
+        if e_time == datetime(2024,1,1,0,0).time():
+            e_time = datetime(2024,1,1,23,59).time()
         self.driver.get(search_url)
         time.sleep(4)
-        page_url_list = []
         page_source = self.driver.page_source
         soup = BeautifulSoup(page_source, 'html.parser')
         article_list = soup.select("a.hx")
-        for article in article_list:
-            page_url_list.append(self.article_base_url + article['href'])
-        return page_url_list
+        time_list = [
+            datetime.strptime(x.text.strip("\t"), "%H:%M").time()
+            for x in soup.select("tbody > tr:not([class]) > td.time")
+        ]
+
+        filtered_articles = [
+        self.article_base_url + article["href"]
+        for article, post_time in zip(article_list, time_list)
+        if s_time <= post_time < e_time
+        ]
+        return filtered_articles
