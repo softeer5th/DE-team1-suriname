@@ -146,10 +146,28 @@ def load_issue_score(df_community, df_news, conn, event) :
         
         update_query = """
         UPDATE accumulated_table
-        SET issue_score = %s
+        SET 
+            is_alert = CASE
+                WHEN is_alert = true THEN true
+                WHEN (
+                    CASE 
+                        WHEN issue_score < 0.3 THEN '관심'
+                        WHEN issue_score < 0.6 THEN '주의'
+                        ELSE '긴급'
+                    END
+                ) <> (
+                    CASE 
+                        WHEN %s < 0.3 THEN '관심'
+                        WHEN %s < 0.6 THEN '주의'
+                        ELSE '긴급'
+                    END
+                ) THEN true
+                ELSE false
+            END, 
+            issue_score = %s
         WHERE car_model = %s AND accident = %s;
         """
-        cur.execute(update_query, (issue_score, car_model, accident))
+        cur.execute(update_query, (issue_score, issue_score, issue_score, car_model, accident))
 
     conn.commit()
     cur.close()
