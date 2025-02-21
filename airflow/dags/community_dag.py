@@ -98,7 +98,7 @@ process_issue_task = PythonOperator(
 
 # 커뮤니티 리스트
 # communities = ["dcinside", "bobaedream"]
-communities = ["dcinside"]  # test용
+communities = ["dcinside", "femco"]  # test용
 
 # Extract Lambda 호출 Task 리스트
 extract_lambda_tasks = []
@@ -110,27 +110,24 @@ except:
     unique_car_models = []  # Variable이 아직 설정되지 않았다면 빈 리스트
 
 for community in communities:
-    for car_model in unique_car_models:
-        # ✅ 한글 Task ID 방지 (hash 처리)
-        hashed_model = hashlib.md5(car_model.encode()).hexdigest()[:6]  # ASCII 문자 유지
-
-        lambda_task = LambdaInvokeFunctionOperator(
-            task_id=f'crawl_{community}_{hashed_model}',
-            function_name='bobae-crawler',
-            payload=json.dumps({
-                "community": community,
-                "keyword": car_model,
-                # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
-                # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
-                "start_time_str": test_start_time, # test
-                "end_time_str": test_end_time # test
-            }),
-            aws_conn_id=None,
-            region_name='ap-northeast-2',
-            execution_timeout=timedelta(minutes=15),
-            dag=dag
-        )
-        extract_lambda_tasks.append(lambda_task)
+    # # ✅ 한글 Task ID 방지 (hash 처리)
+    # hashed_model = hashlib.md5(car_model.encode()).hexdigest()[:6]  # ASCII 문자 유지
+    lambda_task = LambdaInvokeFunctionOperator(
+        task_id=f'crawl_{community}',
+        function_name='bobae-crawler',
+        payload=json.dumps({
+            "community": community,
+            # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
+            # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
+            "start_time_str": test_start_time, # test
+            "end_time_str": test_end_time # test
+        }),
+        aws_conn_id=None,
+        region_name='ap-northeast-2',
+        execution_timeout=timedelta(minutes=15),
+        dag=dag
+    )
+    extract_lambda_tasks.append(lambda_task)
 
 s3_community_data = Variable.get("S3_COMMUNITY_DATA", "s3a://aws-seoul-suriname/data/community/")
 s3_community_output = Variable.get("S3_COMMUNITY_OUTPUT", "s3a://aws-seoul-suriname/data/community/output/")
@@ -140,8 +137,8 @@ Variable.set("COMMUNITY_ACCIDENT_KEYWORD_ENCODED", encoded_value)
 accident_keyword = Variable.get("COMMUNITY_ACCIDENT_KEYWORD_ENCODED")
 
 gpt = Variable.get("GPT")
-issue_list_original = Variable.get("test_issue_list") # test
-# issue_list_original = Variable.get("issue_list") # test
+issue_list_original = Variable.get("issue_list")
+# issue_list_original = Variable.get("test_issue_list") # test
 issue_list_encoded_value = base64.b64encode(json.dumps(issue_list_original, ensure_ascii=False).encode('utf-8')).decode('utf-8')
 Variable.set("ISSUE_LIST_ENCODED", issue_list_encoded_value)
 issue_list = Variable.get("ISSUE_LIST_ENCODED")
@@ -216,13 +213,13 @@ send_slack_alert = LambdaInvokeFunctionOperator(
 
 
 # DAG 실행 순서 설정
-# chain(
-#     process_issue_task,
-#     extract_lambda_tasks,
-#     emr_serverless_task,
-#     lambda_load_community_task,
-#     send_slack_alert
-# )
+chain(
+    process_issue_task,
+    extract_lambda_tasks,
+    emr_serverless_task,
+    lambda_load_community_task,
+    send_slack_alert
+)
 
-# # test
-emr_serverless_task >> lambda_load_community_task
+# test
+# emr_serverless_task >> lambda_load_community_task
