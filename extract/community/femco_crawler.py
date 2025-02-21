@@ -24,18 +24,6 @@ class FemcoCrawler:
     def init_driver(self):
         options = Options()
         options.add_argument("--headless")  # 헤드리스 모드
-        # options.add_argument("--disable-gpu")  # GPU 비활성화
-        # options.add_argument("--window-size=1920x1080")  # 화면 크기 설정
-        # options.add_argument("--no-sandbox")  # 샌드박스 비활성화
-        # options.add_argument("--disable-dev-shm-usage")  # /dev/shm 사용 비활성화
-        # options.add_argument("--disable-dev-tools")
-        # options.add_argument("--no-zygote")
-        # # options.add_argument("--single-process")
-        # options.add_argument(f"--user-data-dir={mkdtemp()}")
-        # options.add_argument(f"--data-path={mkdtemp()}")
-        # options.add_argument(f"--disk-cache-dir={mkdtemp()}")
-        # options.add_argument("--remote-debugging-pipe")
-        # options.add_argument("--verbose")
         if self.is_lambda:
             chrome_driver_path = "/opt/chrome-driver/chromedriver-linux64/chromedriver" # lambda
             chrome_path = "/opt/chrome/chrome-linux64/chrome"
@@ -86,39 +74,47 @@ class FemcoCrawler:
         MAX_RETRIES = 3
         for url in url_list:
             retry_count = 0
-            response = requests.get(url, headers=self.headers)
+            session = requests.Session()
+            response = session.get(url, headers=self.headers)
+            # response = requests.get(url, headers=self.headers)
+            print(session.cookies.get_dict())
             while retry_count < MAX_RETRIES:
                 if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, "html.parser")
                     break
                 else:
-                    print(f"retry {retry_count} : {url}")
+                    print(f"retry {retry_count} : {url} status: {response.status_code}")
                     retry_count += 1
-                    self.driver = self.init_driver()
-                    self.get_url_list(start_page, start_page)
-                    self.driver.quit()
-                    response = requests.get(url, headers=self.headers)
-            if response.status_code != 200:
-                print(f"Error {response.status_code}: {url} is not available")
-                continue
-            else:
-                try:
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    top_element = soup.select_one("div.top_area.ngeb")
-                    post_time = datetime.strptime(top_element.select_one("span.date.m_no").text, "%Y.%m.%d %H:%M")
-                    if is_page_search:
-                        if self.request["start_time"] <= post_time < self.request["end_time"]:
-                            res_item = self.get_contents_from_url(soup, url)
-                            res_list.append(res_item)
-                            print("save:", res_item["link"] )
-                        else:
-                            print("skip:", url)
-                    else:
+                    # self.driver = self.init_driver()
+                    # self.get_url_list(start_page, start_page)
+                    # self.driver.quit()
+                    # response = requests.get(url, headers=self.headers)
+                    self.driver.get(url)
+                    soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                    time.sleep(4)
+                    break
+            # if response.status_code != 200:
+            #     print(f"Error {response.status_code}: {url} is not available")
+            #     continue
+            # else:
+            try:
+                # soup = BeautifulSoup(response.text, "html.parser")
+                top_element = soup.select_one("div.top_area.ngeb")
+                post_time = datetime.strptime(top_element.select_one("span.date.m_no").text, "%Y.%m.%d %H:%M")
+                if is_page_search:
+                    if self.request["start_time"] <= post_time < self.request["end_time"]:
                         res_item = self.get_contents_from_url(soup, url)
                         res_list.append(res_item)
-                        print("save:", res_item["link"])
-                except Exception as e:
-                    print("parsing error: ", e)
-                    break
+                        print("save:", res_item["link"] )
+                    else:
+                        print("skip:", url)
+                else:
+                    res_item = self.get_contents_from_url(soup, url)
+                    res_list.append(res_item)
+                    print("save:", res_item["link"])
+            except Exception as e:
+                print("parsing error: ", e)
+                break
         return res_list
 
     def get_contents_from_url(self, soup, url:str)->CommunityResponse:
