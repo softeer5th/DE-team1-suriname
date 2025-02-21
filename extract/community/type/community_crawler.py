@@ -9,16 +9,13 @@ class CommunityComment(TypedDict):
 class CommunityRequest(TypedDict):
     start_time : datetime
     end_time : datetime
-    keyword : str
 
 # 출력 데이터의 타입 (키: 게시날짜, 제목, 본문, 댓글, 조회수, 좋아요, 출처, 링크)
 class CommunityResponse(TypedDict):
     post_time : datetime
     title : str
     content : str
-    comment : List[CommunityComment]
     view_count : int
     like_count : int
     source : str
     link : str
-    keyword : str
