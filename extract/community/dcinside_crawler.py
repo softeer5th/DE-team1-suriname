@@ -48,6 +48,9 @@ class DCInsideCrawler:
         self.request = request
         self.start_time = request["start_time"]
         self.end_time = request["end_time"]
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
 
     def init_driver(self):
         service = Service(chrome_driver_path) # lambda 전환 시 바꿔야 함
