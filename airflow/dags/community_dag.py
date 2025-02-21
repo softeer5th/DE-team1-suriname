@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.providers.amazon.aws.hooks.lambda_function import LambdaHook
 from airflow.providers.amazon.aws.operators.lambda_function import LambdaInvokeFunctionOperator as BaseLambdaInvokeFunctionOperator
 from airflow.providers.amazon.aws.operators.emr import EmrServerlessStartJobOperator
+from airflow.models.baseoperator import chain
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from plugins.slack_alert_develop import slack_failure_alert
@@ -12,6 +13,20 @@ import hashlib
 from botocore.config import Config
 import json
 import base64
+
+test_start_time = Variable.get("TEST_START_TIME")
+test_end_time = Variable.get("TEST_END_TIME")
+
+# ✅ "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD-HH-MM-SS" 변환 함수
+def format_time_variable(time_str):
+    return time_str.replace("T", "-").replace(":", "-") + "-00"
+
+# ✅ 변환된 값
+formatted_start_time = format_time_variable(test_start_time)
+formatted_end_time = format_time_variable(test_end_time)
+
+# ✅ test_batch_period 만들기
+test_batch_period = f"{formatted_start_time}_{formatted_end_time}"
 
 # ✅ Lambda 실행 시 타임아웃 문제 해결을 위한 커스텀 오퍼레이터
 class LambdaInvokeFunctionOperator(BaseLambdaInvokeFunctionOperator):
@@ -58,6 +73,8 @@ def process_issue_list(**kwargs):
     if isinstance(issue_list, str):
         issue_list = ast.literal_eval(issue_list)
 
+    Variable.set("issue_list", issue_list)
+
     unique_car_models = list(set(item['car_model'] for item in issue_list))  # 중복 제거
     # unique_car_models = ['그랜저', '아반떼', '쏘나타'] # test
     # Variable에 저장 (덮어쓰기 가능성 있음)
@@ -71,10 +88,6 @@ def process_issue_list(**kwargs):
     print("Execution time window:", data_interval_start, "to", data_interval_end)
     print("Unique car models:", unique_car_models)
 
-    # 커뮤니티 데이터 처리 로직 추가 가능
-    # 1. issue_list 기반으로 커뮤니티 사이트 크롤링
-    # 2. sentiment 분석 및 지표 계산
-    # 3. 결과를 RDS에 업데이트
 
 process_issue_task = PythonOperator(
     task_id="process_issue_list",
@@ -109,8 +122,8 @@ for community in communities:
                 "keyword": car_model,
                 # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
                 # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
-                "start_time_str": "2024-07-02T00:00", # test
-                "end_time_str": "2024-07-02T06:00" # test
+                "start_time_str": test_start_time, # test
+                "end_time_str": test_end_time # test
             }),
             aws_conn_id=None,
             region_name='ap-northeast-2',
@@ -121,20 +134,27 @@ for community in communities:
 
 s3_community_data = Variable.get("S3_COMMUNITY_DATA", "s3a://aws-seoul-suriname/data/community/")
 s3_community_output = Variable.get("S3_COMMUNITY_OUTPUT", "s3a://aws-seoul-suriname/data/community/output/")
-accident_keyword_original = Variable.get("ACCIDENT_KEYWORD")
-encoded_value = base64.b64encode(json.dumps(accident_keyword_original, ensure_ascii=False).encode('utf-8')).decode('utf-8')
-Variable.set("ACCIDENT_KEYWORD_ENCODED", encoded_value)
-accident_keyword = Variable.get("ACCIDENT_KEYWORD_ENCODED")
+community_accident_keyword_original = Variable.get("COMMUNITY_ACCIDENT_KEYWORD")
+encoded_value = base64.b64encode(json.dumps(community_accident_keyword_original, ensure_ascii=False).encode('utf-8')).decode('utf-8')
+Variable.set("COMMUNITY_ACCIDENT_KEYWORD_ENCODED", encoded_value)
+accident_keyword = Variable.get("COMMUNITY_ACCIDENT_KEYWORD_ENCODED")
+
 gpt = Variable.get("GPT")
+issue_list_original = Variable.get("test_issue_list") # test
+# issue_list_original = Variable.get("issue_list") # test
+issue_list_encoded_value = base64.b64encode(json.dumps(issue_list_original, ensure_ascii=False).encode('utf-8')).decode('utf-8')
+Variable.set("ISSUE_LIST_ENCODED", issue_list_encoded_value)
+issue_list = Variable.get("ISSUE_LIST_ENCODED")
 
 
 entryPointArguments = [
     "--data_source", s3_community_data,
     "--output_uri", s3_community_output,
     # "--batch_period", "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
-    "--batch_period", "2024-07-02-00-00-00_2024-07-02-06-00-00", # test
-    "--accident_keyword", accident_keyword,
-    "--gpt", gpt
+    "--batch_period", test_batch_period, # test
+    "--community_accident_keyword", accident_keyword,
+    "--gpt", gpt,
+    "--issue_list", issue_list
 ]
 
 # **EMR Serverless 실행 Task**
@@ -159,7 +179,7 @@ lambda_load_community_task = LambdaInvokeFunctionOperator(
     task_id='invoke_lambda_load_community',
     function_name='lambda_rds_update_news',
     payload=json.dumps({
-        "batch_period": "2024-07-02-00-00-00_2024-07-02-06-00-00",  # 테스트용
+        "batch_period": test_batch_period,  # 테스트용
         # "batch_period": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
         "dbname": Variable.get("RDS_DBNAME"),
         "user": Variable.get("RDS_USER"),
@@ -196,4 +216,13 @@ send_slack_alert = LambdaInvokeFunctionOperator(
 
 
 # DAG 실행 순서 설정
-process_issue_task >> extract_lambda_tasks >> emr_serverless_task >> lambda_load_community_task >> send_slack_alert
+# chain(
+#     process_issue_task,
+#     extract_lambda_tasks,
+#     emr_serverless_task,
+#     lambda_load_community_task,
+#     send_slack_alert
+# )
+
+# # test
+emr_serverless_task >> lambda_load_community_task

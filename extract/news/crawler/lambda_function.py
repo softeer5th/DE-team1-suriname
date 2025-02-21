@@ -8,7 +8,7 @@ from ytn_crawler import YTNCrawler
 import json
 import concurrent.futures
 
-KEYWORD_CARMODEL = ["제네시스", "아이오닉", "아반떼"]
+KEYWORD_CARMODEL = ["아이오닉", "코나", "포터", "넥쏘", "캐스퍼", "아반떼", "쏘나타", "그랜저", "팰리세이드", "투싼", "싼타페", "스타리아"]
 CRAWLER_MAP = {
     "kbs": KBSCrawler,
     "sbs": SBSCrawler,

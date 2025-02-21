@@ -11,6 +11,20 @@ from plugins.slack_alert_develop import slack_failure_alert
 import json
 import base64
 
+test_start_time = Variable.get("TEST_START_TIME")
+test_end_time = Variable.get("TEST_END_TIME")
+
+# ✅ "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD-HH-MM-SS" 변환 함수
+def format_time_variable(time_str):
+    return time_str.replace("T", "-").replace(":", "-") + "-00"
+
+# ✅ 변환된 값
+formatted_start_time = format_time_variable(test_start_time)
+formatted_end_time = format_time_variable(test_end_time)
+
+# ✅ test_batch_period 만들기
+test_batch_period = f"{formatted_start_time}_{formatted_end_time}"
+
 # 기본 설정 (Owner, 시작 날짜, 재시도 설정)
 default_args = {
     'owner': 'airflow',
@@ -68,8 +82,8 @@ for source in news_sources:
             # 한국 시간(KST)으로 변환
             # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
             # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
-            "start_time_str": "2024-07-02T00:00", # test
-            "end_time_str": "2024-07-02T06:00" # test
+            "start_time_str": test_start_time, # test
+            "end_time_str": test_end_time # test
         }),
         aws_conn_id=None, # MWAA에서는 필요 없음
         region_name='ap-northeast-2',
@@ -91,7 +105,7 @@ entryPointArguments = [
     "--data_source", s3_news_data,
     "--output_uri", s3_news_output,
     # "--batch_period", "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
-    "--batch_period", "2024-07-02-00-00-00_2024-07-02-06-00-00", # test
+    "--batch_period", test_batch_period, # test
     "--accident_keyword", accident_keyword,
     "--gpt", gpt
 ]
@@ -118,7 +132,7 @@ lambda_load_news_task = LambdaInvokeFunctionOperator(
     task_id='invoke_lambda_load_news',
     function_name='lambda_load_news',
     payload=json.dumps({
-        "batch_period": "2024-07-02-00-00-00_2024-07-02-06-00-00",  # 테스트용
+        "batch_period": test_batch_period,  # 테스트용
         # "batch_period": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}_{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%d-%H-%M-00') }}",
         "threshold": Variable.get("THRESHOLD", 10),  # 뉴스 이슈 기준 값
         "dbname": Variable.get("RDS_DBNAME"),
