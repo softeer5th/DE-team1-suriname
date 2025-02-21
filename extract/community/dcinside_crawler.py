@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 import time
 import pandas as pd
 from tempfile import mkdtemp
-import urllib.parse
+import requests
 import itertools
 import pytz
 
@@ -241,8 +241,9 @@ class DCInsideCrawler:
 
         for _ in range(MAX_PAGE_ACCESS):
             try:
-                soup = self._get_url_soup(driver, url)
-                
+                response = requests.get(url, headers=self.headers)
+                soup = BeautifulSoup(response.text, "html.parser")
+
                 # 제목 크롤링
                 title_element = soup.select_one('h3.title.ub-word span.title_subject')
                 title = title_element.text if title_element else "Untitled"
