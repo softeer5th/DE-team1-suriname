@@ -8,6 +8,8 @@ import pyarrow.parquet as pq
 
 from bobae_crawler import BobaeCrawler
 from dcinside_crawler import DCInsideCrawler
+from femco_crawler import FemcoCrawler
+from extract.community.femco_crawler import crawler
 from type.community_crawler import CommunityRequest, CommunityResponse
 from conf import BUCKET_NAME, BOBAEDREAM_URL
 
@@ -55,6 +57,8 @@ def lambda_handler(event, context):
             crawler = BobaeCrawler(request)
         elif community == 'dcinside':
             crawler = DCInsideCrawler(request)
+        elif community == 'femco':
+            crawler = FemcoCrawler(request)
         else:
             return {'statusCode': 400, 'body': json.dumps(f"Error: Unsupported community '{community}'")}
         

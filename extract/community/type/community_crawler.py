@@ -16,9 +16,7 @@ class CommunityResponse(TypedDict):
     post_time : datetime
     title : str
     content : str
-    comment : List[CommunityComment]
-    viewCount : int
-    likeCount : int
+    view_count : int
+    like_count : int
     source : str
     link : str
-    keyword : str
