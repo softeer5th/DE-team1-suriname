@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY lambda_function.py ./
 COPY bobae_crawler.py ./
 COPY dcinside_crawler.py ./
+COPY femco_crawler.py ./
 COPY type/ ./type/
 COPY conf.py ./
 

@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 
 from bobae_crawler import BobaeCrawler
 from dcinside_crawler import DCInsideCrawler
+from femco_crawler import FemcoCrawler
 from type.community_crawler import CommunityRequest, CommunityResponse
 from conf import BUCKET_NAME, BOBAEDREAM_URL
 
@@ -35,7 +36,8 @@ def upload_df_to_s3(df, bucket_name, object_name):
 def lambda_handler(event, context):
     try:
         # 요청 객체 생성
-        request = CommunityRequest(start_time=datetime.strptime(event.get('start_time_str'), "%Y-%m-%dT%H:%M"), 
+        request = CommunityRequest(
+                                   start_time=datetime.strptime(event.get('start_time_str'), "%Y-%m-%dT%H:%M"), 
                                    end_time=datetime.strptime(event.get('end_time_str'), "%Y-%m-%dT%H:%M")) 
         
         community = event.get('community')
@@ -52,6 +54,8 @@ def lambda_handler(event, context):
             crawler = BobaeCrawler(request)
         elif community == 'dcinside':
             crawler = DCInsideCrawler(request)
+        elif community == 'femco':
+            crawler = FemcoCrawler(request)
         else:
             return {'statusCode': 400, 'body': json.dumps(f"Error: Unsupported community '{community}'")}
         
