@@ -1,6 +1,7 @@
 from functools import partial
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 from pyspark.sql.types import *
 # import conf
 import urllib.request
@@ -13,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed # 멀티스레�
 from collections import defaultdict
 from pyspark.sql import Row
 
-# ✅ 로깅 설정
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,8 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         issue_list = json.loads(base64.b64decode(issue_list).decode('utf-8'))
         community_accident_keyword = json.loads(base64.b64decode(community_accident_keyword).decode('utf-8'))
 
-        issue_list = ast.literal_eval(issue_list)
-        community_accident_keyword = ast.literal_eval(community_accident_keyword)
+        # issue_list = ast.literal_eval(issue_list)
+        # community_accident_keyword = ast.literal_eval(community_accident_keyword)
         logger.info(f"formatted issue_list: {issue_list}")
         logger.info(f"formatted community_accident_keyword: {community_accident_keyword}")
 
@@ -54,7 +55,7 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         selected_keywords = {issue['accident']: community_accident_keyword[issue['accident']] for issue in issue_list if issue['accident'] in community_accident_keyword}
         logger.info(f"selected_keywords: {selected_keywords}")
 
-        # 🔹 `car_model` 매칭을 위한 딕셔너리 생성 (accident → car_model 매핑)
+        # `car_model` 매칭을 위한 딕셔너리 생성 (accident → car_model 매핑)
         accident_to_car_model = defaultdict(set)
         for issue in issue_list:
             accident_to_car_model[issue['accident']].add(issue['car_model'])
@@ -82,15 +83,16 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         # )
         df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
-        
-        # 🚀 `accident_to_car_model`을 Spark DataFrame으로 변환
+
+        # df_exploded.show()
+        # `accident_to_car_model`을 Spark DataFrame으로 변환
         mapping_data = [(accident, car_model) for accident, car_models in accident_to_car_model.items() for car_model in car_models]
         mapping_df = spark.createDataFrame([Row(accident=a, car_model=c) for a, c in mapping_data])
 
-        # 🚀 `accident` 기준으로 `join`
+        # `accident` 기준으로 `join`
         df_exploded = df_exploded.join(mapping_df, on="accident", how="left")
-
-        # 🔹 `car_model`이 issue_list에 있는 자동차 모델만 필터링
+        df_exploded.show()
+        # `car_model`이 issue_list에 있는 자동차 모델만 필터링
         # car_models = [issue["car_model"] for issue in issue_list]
         # df_filtered = df_exploded.filter(F.col("car_model").isin(car_models))
         
@@ -99,20 +101,46 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         gpt = json.loads(gpt)
         score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = gpt))
         scored_df = score_rdd.toDF(score_schema).cache()
-        scored_df.show()
+        # scored_df.show()
 
-        grouped_df = scored_df.groupBy("car_model", "accident").agg(
-            F.count("*").alias("count"),
+        avg_scores_df = scored_df.groupBy("car_model", "accident").agg(
+            F.avg("comm_score").alias("avg_comm_score"),
+            F.count("*").alias("count")
+        )
+        avg_scores_df.show()
+
+        window_spec = Window.partitionBy("car_model", "accident").orderBy(F.desc("view_count"))
+        top_post_df = scored_df.withColumn("rank", F.row_number().over(window_spec)) \
+            .filter(F.col("rank") <= 5) \
+            .drop("rank")
+
+        # final_df = scored_df.groupBy("car_model", "accident").agg(
+        #     F.count("*").alias("count"),
+        #     F.to_json(
+        #         F.collect_list(
+        #             F.struct("content", "link")
+        #         )
+        #     ).alias("comm"),
+        #     F.avg("comm_score").alias("avg_comm_score")
+        # )
+
+        grouped_df = top_post_df.groupBy("car_model", "accident").agg(
             F.to_json(
                 F.collect_list(
                     F.struct("content", "link")
                 )
-            ).alias("comm"),
-            F.avg("comm_score").alias("avg_comm_score")
+            ).alias("top_comm")
         )
-        grouped_df.show()
 
-        grouped_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+        final_df = grouped_df.join(
+            avg_scores_df,
+            on=["car_model", "accident"],
+            how="left"
+        )
+
+        final_df.show()
+
+        final_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
     return
 
 # 수정 전 함수
@@ -141,12 +169,12 @@ def score_rdd_generator(partition, param):
     api_key = param["api_key"]
     model = param["model"]
 
-    partition_list = list(partition)  # 🔥 partition을 리스트로 변환 (멀티쓰레딩 적용 가능)
+    partition_list = list(partition)  # partition을 리스트로 변환 (멀티쓰레딩 적용 가능)
 
     if not partition_list:
         return iter([])  # 빈 partition 처리
 
-    # ✅ 🔥 병렬 API 호출 적용 (멀티쓰레딩)
+    # 병렬 API 호출 적용 (멀티쓰레딩)
     results = get_scores_in_parallel(partition_list, api_key, model, max_threads=10)
 
     return iter(results)  # Spark RDD는 이터레이터 반환 필요
@@ -210,7 +238,7 @@ def get_scores_in_parallel(rows, api_key, model, max_threads=10):
     """여러 행을 병렬로 API 요청하여 감성 점수를 가져오는 함수"""
     results = []
 
-    # 🚀 ThreadPoolExecutor 사용 (최대 max_threads개의 API 요청을 동시에 실행)
+    # ThreadPoolExecutor 사용 (최대 max_threads개의 API 요청을 동시에 실행)
     with ThreadPoolExecutor(max_threads) as executor:
         future_to_row = {
             executor.submit(get_score_from_gpt, row["car_model"], row["accident"], row["title"], row["content"], api_key, model): row
@@ -220,7 +248,7 @@ def get_scores_in_parallel(rows, api_key, model, max_threads=10):
         # 완료된 요청부터 순차적으로 결과 처리
         for future in as_completed(future_to_row):
             row = future_to_row[future]
-            row_dict = row.asDict().copy()  # 🔥 Row 객체를 dict로 변환 후 수정 가능
+            row_dict = row.asDict().copy()  # Row 객체를 dict로 변환 후 수정 가능
             try:
                 score = future.result()
                 row_dict["comm_score"] = score
@@ -228,7 +256,7 @@ def get_scores_in_parallel(rows, api_key, model, max_threads=10):
                 print(f"Error processing row: {e}")
                 row_dict["comm_score"] = 0  # 실패 시 기본값
 
-            results.append(Row(**row_dict))  # 🔥 dict를 다시 Row 객체로 변환하여 추가
+            results.append(Row(**row_dict))  # dict를 다시 Row 객체로 변환하여 추가
 
     return results  # 모든 행의 감성 점수 포함된 리스트 반환
 
@@ -238,7 +266,10 @@ if __name__ == "__main__":
     # data_source = conf.S3_COMMUNITY_DATA
     # output_uri = conf.S3_COMMUNITY_OUTPUT
     # batch_period = conf.S3_COMMUNITY_BATCH_PERIOD
-    # transform(data_source, output_uri, batch_period)
+    # accident_keyword = conf.ACCIDENT_KEYWORD
+    # gpt = conf.GPT
+    # issue_list = conf.ISSUE_LIST
+    # transform(data_source, output_uri, batch_period, accident_keyword, gpt, issue_list)
 
     # EMR에서 실행할 때 주석 해제
     parser = argparse.ArgumentParser()
@@ -249,5 +280,5 @@ if __name__ == "__main__":
     parser.add_argument("--gpt", help="gpt information")
     parser.add_argument("--issue_list", help="issue list")
     args = parser.parse_args()
-    
+
     transform(args.data_source, args.output_uri, args.batch_period, args.community_accident_keyword, args.gpt, args.issue_list)
