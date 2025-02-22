@@ -10,6 +10,8 @@ import ast
 import base64
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed # 멀티스레딩
+from collections import defaultdict
+from pyspark.sql import Row
 
 # ✅ 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +55,13 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         logger.info(f"selected_keywords: {selected_keywords}")
 
         # 🔹 `car_model` 매칭을 위한 딕셔너리 생성 (accident → car_model 매핑)
-        accident_to_car_model = {issue['accident']: issue['car_model'] for issue in issue_list}
+        accident_to_car_model = defaultdict(set)
+        for issue in issue_list:
+            accident_to_car_model[issue['accident']].add(issue['car_model'])
+        
+        # set을 list로 변환
+        accident_to_car_model = {k: list(v) for k, v in accident_to_car_model.items()}
+
         logger.info(f"accident_to_car_model: {accident_to_car_model}")
 
         # 이부분 바뀌어야 함.
@@ -75,10 +83,12 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         df_exploded = df.withColumn("accident", F.explode(F.col("accident"))) \
             .filter(F.col("accident").isNotNull())
         
-        mapping_expr = F.create_map([F.lit(k) for pair in accident_to_car_model.items() for k in pair])
-        df_exploded = df_exploded.withColumn("car_model", mapping_expr[F.col("accident")])
+        # 🚀 `accident_to_car_model`을 Spark DataFrame으로 변환
+        mapping_data = [(accident, car_model) for accident, car_models in accident_to_car_model.items() for car_model in car_models]
+        mapping_df = spark.createDataFrame([Row(accident=a, car_model=c) for a, c in mapping_data])
 
-        df_exploded.show()
+        # 🚀 `accident` 기준으로 `join`
+        df_exploded = df_exploded.join(mapping_df, on="accident", how="left")
 
         # 🔹 `car_model`이 issue_list에 있는 자동차 모델만 필터링
         # car_models = [issue["car_model"] for issue in issue_list]
