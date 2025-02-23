@@ -121,10 +121,10 @@ def load_issue_score(df_community, df_news, conn, event) :
     df_view_table = df_view_table.rename(columns={'count': 'news_count'})
 
 
-    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count', 'top_comm']],
+    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count' ,'comm_positive_count', 'comm_negative_count', 'top_comm']],
                                 on=['car_model', 'accident'],
                                 how='left')
-    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count', 'top_comm']],
+    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count', 'comm_positive_count', 'comm_negative_count', 'top_comm']],
                                 on=['car_model', 'accident'],
                                 how='left')
     
@@ -267,10 +267,12 @@ def load_redshift_table(df_view_table, redshift_conn, event):
         batch_time = event["batch_period"].split("_")[1]
         batch_time_dt = datetime.datetime.strptime(batch_time, "%Y-%m-%d-%H-%M-%S")
         top_comm = row["top_comm"]
+        comm_positive_count = row['comm_positive_count']
+        comm_negative_count = row['comm_negative_count']
 
         insert_query = f"""
-        INSERT INTO raw_data.final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time, top_comm)
-        VALUES ('{car_model}', '{accident}', {issue_score}, {comm_count}, {news_count}, '{start_batch_time}', '{batch_time_dt}', '{json.dumps(top_comm, ensure_ascii=False)}')
+        INSERT INTO raw_data.final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time, top_comm, comm_positive_count, comm_negative_count)
+        VALUES ('{car_model}', '{accident}', {issue_score}, {comm_count}, {news_count}, '{start_batch_time}', '{batch_time_dt}', '{json.dumps(top_comm, ensure_ascii=False)}', comm_positive_count, comm_negative_count)
         """
         query_id = execute_redshift_query(insert_query, redshift_conn)
         if not query_id:

@@ -105,7 +105,9 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
 
         avg_scores_df = scored_df.groupBy("car_model", "accident").agg(
             F.avg("comm_score").alias("avg_comm_score"),
-            F.count("*").alias("count")
+            F.count("*").alias("count"),
+            F.sum(F.when(F.col("comm_score") <= 45, 1).otherwise(0)).alias("comm_positive_count"),
+            F.sum(F.when(F.col("comm_score") >= 55, 1).otherwise(0)).alias("comm_negative_count")
         )
         avg_scores_df.show()
 
@@ -200,6 +202,7 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, api
 
                 각 행에는 제목(title), 본문(content)이 포함되어 있어.
                 이 모든 요소를 종합하여 **해당 차량과 사고 유형에 대한 감성 점수**를 100(매우 부정적)에서 0(매우 긍정적)까지의 범위로 숫자로 평가해줘.
+                긍부정은 현대기아 자동차 입장에서 판단을 해줘. 예를 들어 현대기아를 옹호하거나, 사건의 원인을 현대기아 자동차가 아닌 다른데 있으면 긍정적인거고, 현대기아차를 비판하거나 사건의 원인이라고 규정하면 있으면 부정적인거야.
                 50에 가까울수록 중립적이며, 100에 가까울수록 부정적, 0에 가까울수록 긍정적인거야.
                 반환은 반드시 0~100사이의 정수 숫자만 반환하고 아무런 말도 하지마.
                 아래는 분석할 데이터야:
