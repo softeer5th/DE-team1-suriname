@@ -108,10 +108,10 @@ def load_issue_score(df_community, df_news, conn, event) :
     df_view_table = df_view_table.rename(columns={'count': 'news_count'})
 
 
-    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count']],
+    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count' ,'comm_positive_count', 'comm_negative_count']],
                                 on=['car_model', 'accident'],
                                 how='left')
-    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count']],
+    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count', 'comm_positive_count', 'comm_negative_count']],
                                 on=['car_model', 'accident'],
                                 how='left')
     
@@ -188,14 +188,16 @@ def load_final_table(df_view_table, conn, event) :
         comm_count = row['comm_count']
         news_count = row['news_count']
         start_batch_time = row['start_batch_time']
+        comm_positive_count = row['comm_positive_count']
+        comm_negative_count = row['comm_negative_count']
         batch_time  = event["batch_period"].split('_')[1]
         batch_time_dt = datetime.datetime.strptime(batch_time, '%Y-%m-%d-%H-%M-%S')
 
         insert_query = """
-        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time)
+        INSERT INTO final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time, comm_positive_count, comm_negative_count)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time_dt))
+        cur.execute(insert_query, (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time_dt, comm_positive_count, comm_negative_count))
 
     conn.commit()
     cur.close()
