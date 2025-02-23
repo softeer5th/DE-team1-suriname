@@ -6,7 +6,6 @@ import io
 import numpy as np 
 import pyarrow.parquet as pq
 import datetime
-import time
 
 # AWS 클라이언트 설정
 s3_client = boto3.client("s3")
@@ -43,19 +42,6 @@ def get_data_from_RDS(event) -> pd.DataFrame :
     print(df.head())
     return df
 
-def get_redshift_connection(event):
-    """
-    Redshift Data API (boto3) 를 이용한 Redshift 연결 함수
-    """
-    redshift_client = boto3.client("redshift-data")
-
-    return {
-        "client": redshift_client,
-        "database": event["redshift_db"],
-        "workgroup": event["redshift_workgroup"]
-    }
-
-
 def piecewise_linear(x, lower, mid, upper):
     """
     x: 원본 값
@@ -80,6 +66,27 @@ def piecewise_linear(x, lower, mid, upper):
         return 1.0
 
 piecewise_linear_vec = np.vectorize(piecewise_linear)
+
+def load_community(df:pd.DataFrame, conn):
+    cur = conn.cursor()
+    for idx, row in df.iterrows():
+        query = f"""
+        UPDATE accumulated_table
+        SET comm_score = {row['avg_comm_score']} ,
+            comm_acc_count = COALESCE(comm_acc_count, 0) + {row['count']},
+            top_comm = COALESCE(top_comm, '[]'::jsonb) || '{json.dumps(row["top_comm"], ensure_ascii=False)}'::jsonb
+        WHERE car_model = '{row['car_model']}'
+            AND accident = '{row['accident']}';
+        """
+        try:
+            cur.execute(query)
+        except Exception as e:
+            print(f"Error executing query: {e}")
+            conn.rollback()
+
+    conn.commit()
+    cur.close()
+    return
 
 def load_issue_score(df_community, df_news, conn, event) : 
     # 예상 범위
@@ -121,10 +128,10 @@ def load_issue_score(df_community, df_news, conn, event) :
     df_view_table = df_view_table.rename(columns={'count': 'news_count'})
 
 
-    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count' ,'comm_positive_count', 'comm_negative_count', 'top_comm']],
+    df_scaled = df_scaled.merge(df_community[['car_model', 'accident', 'count']],
                                 on=['car_model', 'accident'],
                                 how='left')
-    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count', 'comm_positive_count', 'comm_negative_count', 'top_comm']],
+    df_view_table = df_view_table.merge(df_community[['car_model', 'accident', 'count']],
                                 on=['car_model', 'accident'],
                                 how='left')
     
@@ -190,103 +197,30 @@ def load_issue_score(df_community, df_news, conn, event) :
 
     return df_view_table
 
-def load_community(df:pd.DataFrame, conn):
+def upload_to_redshift(df_view_table, conn, event):
     cur = conn.cursor()
-    for idx, row in df.iterrows():
-        query = f"""
-        UPDATE accumulated_table
-        SET comm_score = {row['avg_comm_score']} ,
-            comm_acc_count = COALESCE(comm_acc_count, 0) + {row['count']}
-        WHERE car_model = '{row['car_model']}'
-            AND accident = '{row['accident']}';
-        """
-        try:
-            cur.execute(query)
-        except Exception as e:
-            print(f"Error executing query: {e}")
-            conn.rollback()
-
-    conn.commit()
-    cur.close()
-    return
-
-def execute_redshift_query(query, redshift_conn):
-    """
-    Redshift Serverless (boto3)에서 SQL 실행 함수
-    """
-    client = redshift_conn["client"]
-    
-    try:
-
-        print(f"Executing query: {query}")  # 실행 쿼리 출력
-
-        response = client.execute_statement(
-            WorkgroupName=redshift_conn["workgroup"],
-            Database=redshift_conn["database"],
-            Sql=query
-        )
-        query_id = response["Id"]
-        
-        # 실행 상태 확인
-        while True:
-            status_response = client.describe_statement(Id=query_id)
-            status = status_response["Status"]
-            if status in ["FINISHED", "FAILED", "ABORTED"]:
-                break
-            print(f"Query {query_id} is still running...")
-            time.sleep(1)
-
-        if status == "FINISHED":
-            print(f"Query {query_id} executed successfully.")
-            return query_id
-        else:
-            error_message = status_response.get("Error", "No error message provided")
-            print(f"Query {query_id} failed with status: {status}. Error: {error_message}")
-            return None
-
-    except Exception as e:
-        print(f"Error executing Redshift query: {e}")
-        return None
-    
-def load_redshift_table(df_view_table, redshift_conn, event):
-    """
-    df_view_table 데이터를 Redshift Serverless에 적재하는 함수
-    """
-    df_view_table = df_view_table.drop("news", axis=1, errors="ignore")  # 'news' 컬럼 제거
-
-    print("df_view_table =======================================")
+    df_view_table = df_view_table.drop('news', axis=1)
+    for idx, row in df_view_table.iterrows():
+        car_model = row['car_model']
+        accident = row['accident']
+        batch_time = event["batch_period"].split("_")[1]
+        news_count = row['news_count']
+        start_batch_time = row['start_batch_time']
+        comm_count = row['comm_count']
+        issue_score = row['issue_score']
+        top_comm = row['top_comm']
+        comm_positive_count = 0
+        comm_negative_count = 0
+    print("VIEW =======================================")
     print(df_view_table.head())
 
-    for idx, row in df_view_table.iterrows():
-        car_model = row["car_model"]
-        accident = row["accident"]
-        issue_score = row["issue_score"]
-        comm_count = row["comm_count"]
-        news_count = row["news_count"]
-        start_batch_time = row["start_batch_time"]
-        batch_time = event["batch_period"].split("_")[1]
-        batch_time_dt = datetime.datetime.strptime(batch_time, "%Y-%m-%d-%H-%M-%S")
-        top_comm = row["top_comm"]
-        comm_positive_count = row['comm_positive_count']
-        comm_negative_count = row['comm_negative_count']
-
-        insert_query = f"""
-        INSERT INTO raw_data.final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time, top_comm, comm_positive_count, comm_negative_count)
-        VALUES ('{car_model}', '{accident}', {issue_score}, {comm_count}, {news_count}, '{start_batch_time}', '{batch_time_dt}', '{json.dumps(top_comm, ensure_ascii=False)}', comm_positive_count, comm_negative_count)
-        """
-        query_id = execute_redshift_query(insert_query, redshift_conn)
-        if not query_id:
-            print(f"Failed to insert row {idx} into final_table")
-            return
-
 def lambda_handler(event, context):
-
     # S3에서 파일 가져오기
     # 뉴스 데이터 가져오기
     s3 = boto3.client('s3')
     bucket_name = event["bucket_name"]
     news_folder_path = 'data/news/output/' + event["batch_period"] + '/'
-    
+
     response = s3.list_objects_v2(Bucket=bucket_name, Prefix=news_folder_path)
     parquet_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith('.parquet')]
 
@@ -326,8 +260,7 @@ def lambda_handler(event, context):
         print("communtiy =======================================")
         print(df_community.head())
     else :
-        df_community = pd.DataFrame(columns=['car_model', 'accident', 'comm_count'])
-
+        df_community = pd.DataFrame(columns=['car_model', 'accident', 'comm_count', 'top_comm'])
 
     conn = psycopg2.connect(
         dbname= event["dbname"], 
@@ -336,20 +269,14 @@ def lambda_handler(event, context):
         host= event["url"],
         port= event["port"], 
     )
-    try:
-        load_community(df_community, conn)
-        df_view_table = load_issue_score(df_community, df_news, conn, event)
-    finally:
-        conn.close()  # ✅ RDS 연결 종료
-        print("RDS connection closed.")
-
-
-    redshift_conn = get_redshift_connection(event)
-    load_redshift_table(df_view_table, redshift_conn, event)
+    load_community(df_community, conn)
+    df_view_table = load_issue_score(df_community, df_news, conn, event)
+    print("VIEW =======================================")
+    print(df_view_table.head())
+    upload_to_redshift(df_view_table. conn, event)
 
     return {
         "statusCode": 200,
         "body": json.dumps({
         })
     }
-
