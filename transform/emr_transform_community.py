@@ -13,11 +13,12 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed # 멀티스레딩
 from collections import defaultdict
 from pyspark.sql import Row
+from datetime import datetime
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+err_cnt = 0
 def transform(data_source:str, output_uri:str, batch_period:str, community_accident_keyword:str, gpt, issue_list)-> None:
     with (
         SparkSession.builder.appName(f"transform news at {batch_period}").config("spark.driver.bindAddress", "0.0.0.0")
@@ -42,8 +43,8 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         issue_list = json.loads(base64.b64decode(issue_list).decode('utf-8'))
         community_accident_keyword = json.loads(base64.b64decode(community_accident_keyword).decode('utf-8'))
 
-        issue_list = ast.literal_eval(issue_list)
-        community_accident_keyword = ast.literal_eval(community_accident_keyword)
+        # issue_list = ast.literal_eval(issue_list)
+        # community_accident_keyword = ast.literal_eval(community_accident_keyword)
         logger.info(f"formatted issue_list: {issue_list}")
         logger.info(f"formatted community_accident_keyword: {community_accident_keyword}")
 
@@ -117,10 +118,28 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
 
         score_schema = df_exploded.schema.add('comm_score', IntegerType(), True)
         gpt = json.loads(gpt)
-        score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = gpt))
+
+        start_date, end_date = batch_period.split("_")
+        # start_date = datetime.strptime(start_date, "%Y-%m-%d-%H-%M-%S")
+        # end_date = datetime.strptime(end_date, "%Y-%m-%d-%H-%M-%S")
+
+        print(df_exploded.count())
+        batch_post = df_exploded.filter(
+            F.col("post_time").between(F.to_timestamp(F.lit(start_date), "yyyy-MM-dd-HH-mm-ss"), F.to_timestamp(F.lit(end_date), "yyyy-MM-dd-HH-mm-ss"))
+        )
+        print(batch_post.count())
+        # filtered_df = df_exploded.filter(
+        #     (F.col("post_time") >= F.to_timestamp(F.lit(start_date), "yyyy-MM-dd-HH-mm-ss")) &
+        #     (F.col("post_time") <= F.to_timestamp(F.lit(end_date), "yyyy-MM-dd-HH-mm-ss"))
+        # )
+
+        batch_post = batch_post.limit(300)
+        score_rdd = batch_post.rdd.mapPartitions(partial(score_rdd_generator, param = gpt))
         scored_df = score_rdd.toDF(score_schema).cache()
         scored_df.show()
+        scored_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/' + "debug/")
 
+        # 평균 점수, 개수를 카테고리별로 계산
         avg_scores_df = scored_df.groupBy("car_model", "accident").agg(
             F.avg("comm_score").alias("avg_comm_score"),
             F.count("*").alias("count"),
@@ -130,7 +149,8 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         avg_scores_df.show()
 
         window_spec = Window.partitionBy("car_model", "accident").orderBy(F.desc("view_count"))
-        top_post_df = scored_df.withColumn("rank", F.row_number().over(window_spec)) \
+
+        top_post_df = df_exploded.withColumn("rank", F.row_number().over(window_spec)) \
             .filter(F.col("rank") <= 5) \
             .drop("rank")
 
@@ -144,16 +164,18 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         #     F.avg("comm_score").alias("avg_comm_score")
         # )
 
+        # 조회수 상위 다섯개 df
         grouped_df = top_post_df.groupBy("car_model", "accident").agg(
             F.to_json(
                 F.collect_list(
-                    F.struct("content", "link")
+                    F.struct("title", "content", "link", "view_count", "like_count")
                 )
             ).alias("top_comm")
         )
 
-        final_df = grouped_df.join(
-            avg_scores_df,
+        # 사건별 그룹화 된 것에 평균 점수, 게시글 개수 추가
+        final_df = avg_scores_df.join(
+            grouped_df,
             on=["car_model", "accident"],
             how="left"
         )
@@ -161,6 +183,7 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         final_df.show()
 
         final_df.coalesce(1).write.mode('overwrite').parquet(output_uri + batch_period + '/')
+        logger.info(err_cnt)
     return
 
 # 수정 전 함수
@@ -195,12 +218,13 @@ def score_rdd_generator(partition, param):
         return iter([])  # 빈 partition 처리
 
     # 병렬 API 호출 적용 (멀티쓰레딩)
-    results = get_scores_in_parallel(partition_list, api_key, model, max_threads=10)
+    results = get_scores_in_parallel(partition_list, api_key, model, max_threads=5)
 
     return iter(results)  # Spark RDD는 이터레이터 반환 필요
 
 
 def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, api_key: str, model: str = "gpt-4o-mini") -> int:
+    global err_cnt
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -249,11 +273,13 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, api
 
         content = data["choices"][0]["message"]["content"].strip()
         score = int(content)
-        print(score)
+        logger.info(f"score: {score}")
         return score
     except Exception as e:
         print(f"Error while calling API: {e}. score set to 0.")
-        return 0
+        # err_cnt += 1
+        logger.info(f"gpt {e}")
+        return -1000
 
 def get_scores_in_parallel(rows, api_key, model, max_threads=10):
     """여러 행을 병렬로 API 요청하여 감성 점수를 가져오는 함수"""
@@ -275,7 +301,8 @@ def get_scores_in_parallel(rows, api_key, model, max_threads=10):
                 row_dict["comm_score"] = score
             except Exception as e:
                 print(f"Error processing row: {e}")
-                row_dict["comm_score"] = 0  # 실패 시 기본값
+                logger.info(f"{e}")
+                row_dict["comm_score"] = -100  # 실패 시 기본값
 
             results.append(Row(**row_dict))  # dict를 다시 Row 객체로 변환하여 추가
 
