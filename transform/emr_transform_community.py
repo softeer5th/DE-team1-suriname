@@ -42,13 +42,31 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         issue_list = json.loads(base64.b64decode(issue_list).decode('utf-8'))
         community_accident_keyword = json.loads(base64.b64decode(community_accident_keyword).decode('utf-8'))
 
-        # issue_list = ast.literal_eval(issue_list)
-        # community_accident_keyword = ast.literal_eval(community_accident_keyword)
+        issue_list = ast.literal_eval(issue_list)
+        community_accident_keyword = ast.literal_eval(community_accident_keyword)
         logger.info(f"formatted issue_list: {issue_list}")
         logger.info(f"formatted community_accident_keyword: {community_accident_keyword}")
 
 
         df = spark.read.schema(data_schema).parquet(data_source + batch_period + '/')
+
+        df = df.withColumn(
+            "content",
+            F.regexp_replace(
+                F.col("content"),
+                "[^가-힣a-zA-Z0-9\\s]",
+                ""
+            )
+        )
+
+        df = df.withColumn(
+            "title",
+            F.regexp_replace(
+                F.col("title"),
+                "[^가-힣a-zA-Z0-9\\s]",
+                ""
+            )
+        )
 
         
         # issue_list에 해당하는 사고 유형만 추출
@@ -101,7 +119,7 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         gpt = json.loads(gpt)
         score_rdd = df_exploded.rdd.mapPartitions(partial(score_rdd_generator, param = gpt))
         scored_df = score_rdd.toDF(score_schema).cache()
-        # scored_df.show()
+        scored_df.show()
 
         avg_scores_df = scored_df.groupBy("car_model", "accident").agg(
             F.avg("comm_score").alias("avg_comm_score"),
