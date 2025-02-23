@@ -16,6 +16,7 @@ def upload_to_s3(local_script_path:str, s3_script_path:str):
         logger.info("emr script upload succeed.")
         return True
     except Exception as e:
+        logger.info(e)
         logger.info("emr script upload failed.")
         return False
 
