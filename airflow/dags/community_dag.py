@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.providers.amazon.aws.hooks.lambda_function import LambdaHook
 from airflow.providers.amazon.aws.operators.lambda_function import LambdaInvokeFunctionOperator as BaseLambdaInvokeFunctionOperator
 from airflow.providers.amazon.aws.operators.emr import EmrServerlessStartJobOperator
-from airflow.models.baseoperator import chain
+# from airflow.models.baseoperator import chain
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
@@ -139,25 +139,25 @@ try:
 except:
     unique_car_models = []  # Variable이 아직 설정되지 않았다면 빈 리스트
 
-for community in communities:
-    # # ✅ 한글 Task ID 방지 (hash 처리)
-    # hashed_model = hashlib.md5(car_model.encode()).hexdigest()[:6]  # ASCII 문자 유지
-    lambda_task = LambdaInvokeFunctionOperator(
-        task_id=f'crawl_{community}',
-        function_name='bobae-crawler',
-        payload=json.dumps({
-            "community": community,
-            # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
-            # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
-            "start_time_str": test_start_time, # test
-            "end_time_str": test_end_time # test
-        }),
-        aws_conn_id=None,
-        region_name='ap-northeast-2',
-        execution_timeout=timedelta(minutes=15),
-        dag=dag
-    )
-    extract_lambda_tasks.append(lambda_task)
+# for community in communities:
+#     # # ✅ 한글 Task ID 방지 (hash 처리)
+#     # hashed_model = hashlib.md5(car_model.encode()).hexdigest()[:6]  # ASCII 문자 유지
+#     lambda_task = LambdaInvokeFunctionOperator(
+#         task_id=f'crawl_{community}',
+#         function_name='bobae-crawler',
+#         payload=json.dumps({
+#             "community": community,
+#             # "start_time_str": "{{ (data_interval_start + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}",
+#             # "end_time_str": "{{ (data_interval_end + macros.timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M') }}"
+#             "start_time_str": test_start_time, # test
+#             "end_time_str": test_end_time # test
+#         }),
+#         aws_conn_id=None,
+#         region_name='ap-northeast-2',
+#         execution_timeout=timedelta(minutes=15),
+#         dag=dag
+#     )
+#     extract_lambda_tasks.append(lambda_task)
 
 s3_community_data = Variable.get("S3_COMMUNITY_DATA", "s3a://aws-seoul-suriname/data/community/")
 s3_community_output = Variable.get("S3_COMMUNITY_OUTPUT", "s3a://aws-seoul-suriname/data/community/output/")
@@ -213,7 +213,9 @@ lambda_load_community_task = LambdaInvokeFunctionOperator(
         "password": Variable.get("RDS_PASSWORD"),
         "url": Variable.get("RDS_HOST"),
         "port": Variable.get("RDS_PORT"),
-        "bucket_name": Variable.get("S3_BUCKET_NAME")  # S3 버킷 정보
+        "bucket_name": Variable.get("S3_BUCKET_NAME"),  # S3 버킷 정보
+        "redshift_db": Variable.get("REDSHIFT_DB"),
+        "redshift_workgroup": Variable.get("REDSHIFT_WORKGROUP")
     }),
     aws_conn_id=None,
     region_name='ap-northeast-2',
@@ -243,13 +245,17 @@ send_slack_alert = LambdaInvokeFunctionOperator(
 
 
 # DAG 실행 순서 설정
-chain(
-    process_issue_task,
-    extract_lambda_tasks,
-    emr_serverless_task,
-    lambda_load_community_task,
-    send_slack_alert
-)
+# chain(
+#     process_issue_task,
+#     extract_lambda_tasks,
+#     emr_serverless_task,
+#     lambda_load_community_task,
+#     send_slack_alert
+# )
+
+# process_issue_task >> extract_lambda_tasks >> emr_serverless_task >> lambda_load_community_task >> send_slack_alert
+
+process_issue_task >> emr_serverless_task >> lambda_load_community_task >> send_slack_alert
 
 # test
 # emr_serverless_task >> lambda_load_community_task
