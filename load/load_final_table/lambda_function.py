@@ -291,10 +291,12 @@ def load_redshift_table(df_view_table, redshift_conn, event):
         )
         """ % top_comm
 
-        query_id = execute_redshift_query(insert_query, redshift_conn)
-        if not query_id:
-            print(f"Failed to insert row {idx} into final_table")
-            return
+        # top_comm 컬럼이 nan이 아닐 때 if문 실행
+        if not pd.isna(top_comm):
+            query_id = execute_redshift_query(insert_query, redshift_conn)
+            if not query_id:
+                print(f"Failed to insert row {idx} into final_table")
+                return
 
 def lambda_handler(event, context):
 
