@@ -239,5 +239,5 @@ crawler = DCInsideCrawler()
 # crawler.start_crawling(9521786, 9559471)
 
 links = crawler.load_links_from_csv('links.csv')
-crawler.start_crawling_multithreaded(12001, 13000)
+crawler.start_crawling_multithreaded(4001, 7000)
 # crawler.start_crawling_multithreaded(0, 21211)
