@@ -272,7 +272,7 @@ def load_redshift_table(df_view_table, redshift_conn, event):
 
         insert_query = f"""
         INSERT INTO raw_data.final_table (car_model, accident, issue_score, comm_count, news_count, start_batch_time, batch_time, top_comm, comm_positive_count, comm_negative_count)
-        VALUES ('{car_model}', '{accident}', {issue_score}, {comm_count}, {news_count}, '{start_batch_time}', '{batch_time_dt}', '{json.dumps(top_comm, ensure_ascii=False)}', comm_positive_count, comm_negative_count)
+        VALUES ('{car_model}', '{accident}', {issue_score}, {comm_count}, {news_count}, '{start_batch_time}', '{batch_time_dt}', '{json.dumps(top_comm, ensure_ascii=False)}', {comm_positive_count}, {comm_negative_count})
         """
         query_id = execute_redshift_query(insert_query, redshift_conn)
         if not query_id:
