@@ -7,12 +7,42 @@ from airflow.operators.python import BranchPythonOperator ## RDS 조회 후 comm
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
-from plugins.slack_alert_develop import slack_failure_alert
 import json
 import base64
 
 test_start_time = Variable.get("TEST_START_TIME")
 test_end_time = Variable.get("TEST_END_TIME")
+
+def send_slack_alert_callback(context):
+
+    dag_id = context.get("dag").dag_id
+    task_id = context.get("task_instance").task_id
+    execution_date = context.get("execution_date")
+    log_url = context.get("task_instance").log_url
+
+    slack_data = {
+        "webhook_url" : Variable.get("DEV_WEBHOOK_URL"),
+        "payload" : {
+            "dag_id": dag_id,
+            "task_id" : task_id,
+            "execution_date": execution_date,
+            "log_url" : log_url,
+        }
+    }
+
+    json_payload = json.dumps(slack_data, default=str)
+
+    
+    # LambdaInvokeFunctionOperator 인스턴스를 생성하고 실행
+    operator = LambdaInvokeFunctionOperator(
+        task_id='send_slack_alert_for_developer',
+        function_name='lambda_slack_alert_for_developer',
+        payload=json_payload,
+        aws_conn_id=None,
+        region_name='ap-northeast-2',
+        execution_timeout=timedelta(minutes=5)
+    )
+    operator.execute(context=context)
 
 # ✅ "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD-HH-MM-SS" 변환 함수
 def format_time_variable(time_str):
@@ -31,7 +61,7 @@ default_args = {
     'depends_on_past': False,
     'start_date': datetime(2024, 1, 1),
     'retries': 1,
-    'on_failure_callback': slack_failure_alert
+    'on_failure_callback': send_slack_alert_callback
 }
 
 # DAG 정의

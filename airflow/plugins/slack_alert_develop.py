@@ -1,70 +1,53 @@
 import json
 import urllib3
-from airflow.models import Variable
 
 # Slack Webhook URL
 http = urllib3.PoolManager()
 
-def slack_failure_alert(context):
-    
-    slack_webhook = Variable.get("DEV_WEBHOOK_URL")
-    
-    dag_id = context.get("dag").dag_id
-    task_id = context.get("task_instance").task_id
-    execution_date = context.get("execution_date")
-    log_url = context.get("task_instance").log_url
-
-    slack_data = {
-        "text": f"🚨 {dag_id} 파이프라인에서 오류가 발생했어요. \n\u200b",
-        "attachments":
-            [{
-                "color": "#FF0000",  
-                "fields":
-                    [
-                        {
-                            "title": "이슈가 발생한 Task",
-                            "value": task_id,
-                            "short": False
-                        },
-                        {
-                            "title": "발생 시간",
-                            "value": execution_date,
-                            "short": False
-                        },
-                        {
-                            "title": "로그 URL",
-                            "value": log_url,
-                            "short": False
-                        },
-                    ]
-            }]
-    }
-
-    send_message(slack_webhook, slack_data)
-
-    
-
 def send_message(webhook_url: str, payload):
-    response = http.request(
-        'POST',
-        webhook_url,
-        body=json.dumps(payload),
-        headers={
-            'Content-Type': 'application/json'
+        slack_data = {
+            "text": f"🚨 {payload["dag_id"]} 파이프라인에서 오류가 발생했어요. 🚨",
+            "attachments": [{
+                "color": "#FF0000",  
+                "fields": [
+                    {
+                        "title": "이슈가 발생한 Task",
+                        "value": payload["task_id"],
+                        "short": False
+                    },
+                    {
+                        "title": "발생 시간",
+                        "value": payload["execution_date"], 
+                        "short": False
+                    },
+                    {
+                        "title": "로그 URL",
+                        "value": payload["log_url"],
+                        "short": False
+                    },
+                ]
+            }]
         }
-    )
-    if response.status != 200:
-        print("failed")
-        return {
-            "statusCode": 400,
-            "body": json.dumps(
-                f"Request to Slack returned an error {response.status}, the response is:\n{response.data}"),
-            "msg": payload["text"]
-        }
-    else:
-        print("success")
-        return {
-            "statusCode": 200,
-            "body": json.dumps("Message was successfuly sent to Slack."),
-            "msg": payload["text"]
-        }
+        print("메시지 전송 호출!!!!!!!!!!")
+        response = http.request(
+            'POST',
+            webhook_url,
+            body=json.dumps(slack_data),
+            headers={'Content-Type': 'application/json'}
+        )
+        if response.status != 200:
+            print("failed")
+        else:
+            print("success")
+        
+
+def lambda_handler(event, context):
+    webhook_url = event['webhook_url']
+    payload = event['payload']
+
+    try:
+        send_message(webhook_url, payload)
+
+    except Exception as e:
+        print(f"[ERROR] Failed to process SNS message: {str(e)}")
+        raise e
