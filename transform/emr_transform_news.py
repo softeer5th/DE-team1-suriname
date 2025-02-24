@@ -186,7 +186,9 @@ if __name__ == "__main__":
     # data_source = conf.S3_NEWS_DATA
     # output_uri = conf.S3_NEWS_OUTPUT
     # batch_period = conf.S3_NEWS_BATCH_PERIOD
-    # transform(data_source, output_uri, batch_period)
+    # accident_keyword = conf.ACCIDENT_KEYWORD
+    # gpt = conf.GPT
+    # transform(data_source, output_uri, batch_period, accident_keyword, gpt)
 
     # EMR에서 실행할 때 주석 해제
     parser = argparse.ArgumentParser()
