@@ -17,6 +17,10 @@
   - `ACCIDENT_KEYWORD`: 검출할 사고 딕셔너리
   - `GPT`: gpt(모델명), api_key 딕셔너리
 #### 작업 흐름
+<div style="text-align: center;">
+    <img style="width: 80%; height: auto;" alt="Image" src="https://github.com/user-attachments/assets/12970a37-1c3a-4f30-8341-332243612118" />
+</div>   
+
 ### emr_transform_community.py
     이슈가 발생했을 때 같은 배치 기간에 수집된 디시 인사이드, 에펨코리아 커뮤니티 게시글에 대해 
     사고에 관련된 게시글들을 필터링 하고 GPT API를 활용해 게시글이 현대자동차 그룹에 대해 부정적인 게시글인지 분석 후 평균 이슈 점수를 계산합니다.
@@ -30,6 +34,10 @@
   - `GPT`: gpt(모델명), api_key 딕셔너리
   - `ISSUE_LIST`: 이슈라고 선정된 딕셔너리
 #### 작업 흐름
+<div style="text-align: center;">
+    <img style="width: 80%; height: auto;" alt="Image" src="https://github.com/user-attachments/assets/70a970a7-6be1-432e-b787-6e414b9af6f6" />
+</div>   
+
 ### EMR 최적화
 - Caching을 활용해 Lazy Evaluation 때문에 발생하는 중복 API 호출을 개선했습니다.
 - 필요없는 컬럼을 filter후 작업 하여 처리해야하는 데이터양을 줄였습니다.
