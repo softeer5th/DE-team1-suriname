@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed # 멀티스레�
 from collections import defaultdict
 from pyspark.sql import Row
 from datetime import datetime
+import json
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -43,8 +44,8 @@ def transform(data_source:str, output_uri:str, batch_period:str, community_accid
         issue_list = json.loads(base64.b64decode(issue_list).decode('utf-8'))
         community_accident_keyword = json.loads(base64.b64decode(community_accident_keyword).decode('utf-8'))
 
-        # issue_list = ast.literal_eval(issue_list)
-        # community_accident_keyword = ast.literal_eval(community_accident_keyword)
+        issue_list = ast.literal_eval(issue_list)
+        community_accident_keyword = ast.literal_eval(community_accident_keyword)
         logger.info(f"formatted issue_list: {issue_list}")
         logger.info(f"formatted community_accident_keyword: {community_accident_keyword}")
 
@@ -234,29 +235,67 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, api
         "model": model,
         "messages": [
             {
+                "role": "system",
+                "content" : f"""
+                    너는 현대자동차 이슈관리팀의 AI야.
+                    지금 {car_model}, {accident} 사고가 발생했어.
+                    너는 사건의 일어난 시간대의 자동차 커뮤니티의 글을 확인하고 있어. 커뮤니티에서는 사고 이야기를 하고 있기도 하고, 아닌글들도 있어.
+                    주어진 커뮤니티 글에 대한 정보는 제목(title)과 본문(content)야.
+                    제목과 본문을 보고 글쓴이가 판단하는 사건에 대한 책임 소재를 현대자동차 입장에서 판단해야해.
+                    일단 글을 봤을 때 이슈에 대한 책임을 어디에 물고 있는지가 중요하겠지?
+                    예를 들어서 car_model = '제네시스', accident = '급발진' 이라고 해보자.
+                    {title}과 {content}를 종합해서 봤을 때, 
+
+                    '급발진이 맞는 것 같다.' '현대차 잘못이다.' '제네시스 차량에 문제가 있네.' '급발진 아님?'
+                    이런 느낌으로 {accident}에 대해 차량이나 차를 만든 회사에 책임을 묻는 듯한 뉘앙스거나 차량이나 회사에 대한 의구심, 사건에 
+                    대한 의심을 제기하거나, 현대자동차에 대해 욕하는 듯한 뉘앙스라면 현대자동차 입장에서 회사에 책임을 물고 있는 글이겠지.
+
+                    '이게 무슨 급발진이야.' '운전자 잘못이네.'
+                    이런 느낌으로 {accident}에 대해 차량이나 차를 만든 회사의 책임보다는 운전자같은 다른 곳에 책임이 있다거나,
+                    운전자를 욕하는 듯한 뉘앙스라고 느껴지면 현대자동차 입장에서 크게 의식 안해도 되는 운전자에 책임을 물고 있는 글이겠지.
+
+                    그리고 사고와 무관한 얘기를 하거나 사고와 관련된 얘기를 해도 글을 봤을 때 이 사람이 주장하는 책임 소재를 
+                    따지기 어려우면 그것은 중립적인 글이라고 판단할 수 있어. 꼭 {accident} 단어를 언급하지 않아야
+                    사고와 관련 없는 얘기를 하는건 아니고, {accident} 단어를 사용해도 이 사고와 관련된 얘기가 
+                    아니라면 {accident}에 대한 얘기가 아니므로 중립으로 판단할 수 있어야 해.
+
+
+                    반환을 "과실 매우 높음", "과실 높음", "중립", "과실 낮음", "과실 매우 낮음" 이렇게 5단계로 나누어서 먼저 해줘.
+                    그 다음 분류 안에서 점수까지 같이 산정을 해줘. 
+                    100점에 가까울 수록 현대차에 책임을 물고 있는 글이고, 
+                    0점에 가까울 수록 운전자에 책임을 물고 있는 글이겠지.
+                    긍정적인 글이지.
+                    "과실 매우 높음" 이라고 판단했을 경우 그 정도를 76점~100점 사이의 지표로 내주고,
+                    "과실 높음" 이라고 판단했을 경우 그 정도를 51점~75점 사이의 지표로 내주고,
+                    "중립" 이라고 판단했거나 아예 관련 없는 글이라고 생각하면 50점 지표로 내주고,
+                    "과실 낮음" 이라고 판단했을 경우 그 정도를 25점~49점 사이의 지표로 내주고,
+                    "과실 매우 낮음" 이라고 판단했을 경우 그 정도를 0점~24점 사이의 지표로 내줘.
+
+                    Input은 다음과 같이 줄게.
+                    ---
+                    **차량 모델:** {car_model}  
+                    **사고 유형:** {accident}  
+                    **제목:** {title}  
+                    **본문:** {content}
+
+                    ---
+
+                    반환은
+                    JSON 형태로 해줘.
+                    ex)
+                    {{"sentiment":"과실 낮음", "score":30, "reason":"판단한 이유 간략히"}}
+                """,
+            },{
                 "role": "user",
-                "content": f"""
-                [커뮤니티 분석 요청]
-
-                [할 것]
-                너는 자동차 관련 글에서 특정 차량과 사고 유형에 대한 감성 분석을 수행하는 AI야.
-                주어진 데이터를 기반으로 **차량 모델과 사고 유형**(예: '{car_model}' + '{accident}')에 대한 전체적인 감성을 분석해줘.
-
-                각 행에는 제목(title), 본문(content)이 포함되어 있어.
-                이 모든 요소를 종합하여 **해당 차량과 사고 유형에 대한 감성 점수**를 100(매우 부정적)에서 0(매우 긍정적)까지의 범위로 숫자로 평가해줘.
-                긍부정은 현대기아 자동차 입장에서 판단을 해줘. 예를 들어 현대기아를 옹호하거나, 사건의 원인을 현대기아 자동차가 아닌 다른데 있으면 긍정적인거고, 현대기아차를 비판하거나 사건의 원인이라고 규정하면 있으면 부정적인거야.
-                50에 가까울수록 중립적이며, 100에 가까울수록 부정적, 0에 가까울수록 긍정적인거야.
-                반환은 반드시 0~100사이의 정수 숫자만 반환하고 아무런 말도 하지마.
-                아래는 분석할 데이터야:
-
-                ---
-                **차량 모델:** {car_model}  
-                **사고 유형:** {accident}  
-                **제목:** {title}  
-                **본문:** {content}
-                
-                ---
-                """
+                "content": 
+                    """
+                    ---
+                    **차량 모델:** {car_model}  
+                    **사고 유형:** {accident}  
+                    **제목:** {title}  
+                    **본문:** {content}
+                    ---
+                    """
             }
         ],
         "temperature": 0.2
@@ -271,10 +310,26 @@ def get_score_from_gpt(car_model:str, accident:str, title:str, content: str, api
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode())
 
+        req = urllib.request.Request(
+            url, 
+            data=json.dumps(payload).encode('utf-8'),
+            headers=headers,
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+
         content = data["choices"][0]["message"]["content"].strip()
-        score = int(content)
-        logger.info(f"score: {score}")
+
+        if content.startswith("```json"):
+            content = content.split('\n', 1)[1]
+            if content.endswith("```"):
+                content = content.rsplit('\n', 1)[0]
+
+        content_data = json.loads(content)
+        score = int(content_data["score"])
         return score
+    
     except Exception as e:
         print(f"Error while calling API: {e}. score set to 0.")
         # err_cnt += 1
