@@ -6,9 +6,8 @@ import pandas as pd
 import pyarrow
 import pyarrow.parquet as pq
 
-from bobae_crawler import BobaeCrawler
-from dcinside_crawler import DCInsideCrawler
-from femco_crawler import FemcoCrawler
+from extract.community.crawler.dcinside_crawler import DCInsideCrawler
+from extract.community.crawler.femco_crawler import FemcoCrawler
 from type.community_crawler import CommunityRequest, CommunityResponse
 from conf import BUCKET_NAME, BOBAEDREAM_URL
 
@@ -50,9 +49,7 @@ def lambda_handler(event, context):
         if not end_time: return {'statusCode': 400, 'body': json.dumps('Error: End datetime is not specified.')}
 
         # 크롤러 선택 및 실행
-        if community == 'bobaedream':
-            crawler = BobaeCrawler(request)
-        elif community == 'dcinside':
+        if community == 'dcinside':
             crawler = DCInsideCrawler(request)
         elif community == 'femco':
             crawler = FemcoCrawler(request)
