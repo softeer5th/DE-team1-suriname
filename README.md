@@ -2,9 +2,9 @@
 
 ## 🚘 현대기아차 이슈 모니터링 서비스
 
-```
+
 현대기아 자동차 관련 큰 이슈가 발생하였을 때 해당 이슈에 대한 대중들의 반응을 빠르고 정확하게 파악하기 위한 모니터링 및 알림 서비스입니다.
-```
+
 
 ## ✨ 기능
 - `이슈 주의도`
@@ -21,12 +21,34 @@
 - `개발자 알림 기능`
   - 파이프라인에 에러가 발생할 경우 슬랙으로 개발팀에게 알림이 전송됩니다.
 
-++++ 이미지
+
+<table>
+  <tr>
+    <td style="width: 50%; text-align: center;">
+      <img src="https://github.com/user-attachments/assets/54650c0a-f1c6-4ae1-8b6b-d88d8f4b9b8d" style="width: 100%;">
+      <br>슬랙 알림
+    </td>
+    <td style="width: 50%; text-align: center;">
+      <img src="https://github.com/user-attachments/assets/b4220447-790f-4b1b-9d83-2ea9095465e0" style="width: 100%;">
+      <br>대시보드
+    </td>
+  </tr>
+</table>
+
 
 ## 📹 시연 영상
 - [Youtube Link](https://www.youtube.com/@KiaKorea)
 
 ## 🖥 파이프라인
+
+
+## 프로젝트 구조
+- [extract/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract): 뉴스 및 커뮤니티 데이터 추출
+- [transform/](https://github.com/softeer5th/DE-team1-suriname/tree/main/transform): 사건과 관련되어 있는 데이터 파악 및 점수 산정과 같은 transform 과정
+- [load/](https://github.com/softeer5th/DE-team1-suriname/tree/main/load): RDS 및 Redshift에 데이터 적재
+- [sns/](https://github.com/softeer5th/DE-team1-suriname/tree/main/sns): 슬랙알림에 관련된 파일들
+- [airflow/](https://github.com/softeer5th/DE-team1-suriname/tree/main/airflow) : 에어플로우 세팅 및 DAG
+
 
 ## 📝 협업 노션
 - [Notion Link](https://tangy-gargoyle-943.notion.site/19033f08a6728006b538f59aee8d2ccd)
@@ -54,63 +76,3 @@
     <td align="center">DE</td>
 </tr>
 </tbody></table>
-
-
-## 프로젝트 구조
-📦DE-team1-suriname  
- ┣ 📂.github  
- ┣ 📂airflow  
- ┃ ┗ 📂dags  
- ┃ ┃ ┣ 📜community_dag.py  
- ┃ ┃ ┗ 📜news_dag.py  
- ┣ 📂extract  
- ┃ ┣ 📂community    
- ┃ ┃ ┣ 📂type  
- ┃ ┃ ┃ ┣ 📜__init__.py  
- ┃ ┃ ┃ ┗ 📜community_crawler.py  
- ┃ ┃ ┣ 📜Dockerfile    
- ┃ ┃ ┣ 📜bobae_crawler.py  
- ┃ ┃ ┣ 📜chrome-installer.sh  
- ┃ ┃ ┣ 📜dcinside_crawler.py  
- ┃ ┃ ┣ 📜femco_crawler.py  
- ┃ ┃ ┣ 📜lambda_function.py  
- ┃ ┃ ┣ 📜requirements.txt  
- ┃ ┣ 📂news  
- ┃ ┃ ┣ 📂crawler  
- ┃ ┃ ┃ ┣ 📜base_crawler.py  
- ┃ ┃ ┃ ┣ 📜kbs_crawler.py  
- ┃ ┃ ┃ ┣ 📜lambda_function.py  
- ┃ ┃ ┃ ┣ 📜sbs_crawler.py  
- ┃ ┃ ┃ ┣ 📜yna_crawler.py  
- ┃ ┃ ┃ ┗ 📜ytn_crawler.py  
- ┃ ┃ ┣ 📂type  
- ┃ ┃ ┃ ┣ 📜__init__.py  
- ┃ ┃ ┃ ┗ 📜news_crawler.py  
- ┃ ┃ ┣ 📜conf.py  
- ┃ ┃ ┣ 📜lambda_function.py  
- ┃ ┃ ┗ 📜test.ipynb  
- ┣ 📂load  
- ┃ ┣ 📂load_final_table  
- ┃ ┃ ┗ 📜lambda_function.py  
- ┃ ┣ 📂load_news  
- ┃ ┃ ┗ 📜lambda_function.py  
- ┃ ┗ 📂upload_to_redshift  
- ┃ ┃ ┣ 📜Dockerfile  
- ┃ ┃ ┣ 📜lambda_function.py  
- ┃ ┃ ┗ 📜requirements.txt  
- ┣ 📂sns  
- ┃ ┣ 📜slack_alert.py  
- ┃ ┗ 📜slack_alert_develop.py  
- ┣ 📂sql  
- ┃ ┗ 📜initiate_accumulate_table.sql  
- ┣ 📂transform  
- ┃ ┣ 📜emr_transform_community.py  
- ┃ ┣ 📜emr_transform_news.py  
- ┃ ┣ 📜lambda_emr_news_trigger.py  
- ┃ ┣ 📜lambda_task_monitor.py  
- ┃ ┗ 📜runner_emr_community.py  
- ┣ 📜.gitignore  
- ┗ 📜README.md  
-
-
-
