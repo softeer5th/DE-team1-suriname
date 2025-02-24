@@ -2,9 +2,12 @@
 
 ## 🚘 현대기아차 이슈 모니터링 서비스
 
-
-현대기아 자동차 관련 큰 이슈가 발생하였을 때 해당 이슈에 대한 대중들의 반응을 빠르고 정확하게 파악하기 위한 모니터링 및 알림 서비스입니다.
-
+```
+현대기아 자동차 관련 큰 이슈가 발생하였을 때 해당 이슈에 대한 
+대중들의 반응을 빠르고 정확하게 파악하기 위한 모니터링 및 알림 서비스입니다.
+```
+## 📹 시연 영상
+- [Youtube Link](https://www.youtube.com/@KiaKorea)
 
 ## ✨ 기능
 - `이슈 주의도`
@@ -26,21 +29,23 @@
   <tr>
     <td style="width: 50%; text-align: center;">
       <img src="https://github.com/user-attachments/assets/54650c0a-f1c6-4ae1-8b6b-d88d8f4b9b8d" style="width: 100%;">
-      <br>슬랙 알림
     </td>
     <td style="width: 50%; text-align: center;">
       <img src="https://github.com/user-attachments/assets/b4220447-790f-4b1b-9d83-2ea9095465e0" style="width: 100%;">
-      <br>대시보드
+    </td>
+  </tr>
+  <tr>
+    <td style="width: 50%; vertical-align: top; text-align: center;">
+      슬랙 알림
+    </td>
+        <td style="width: 50%; vertical-align: top; text-align: center;">
+      대시보드
     </td>
   </tr>
 </table>
 
-
-## 📹 시연 영상
-- [Youtube Link](https://www.youtube.com/@KiaKorea)
-
 ## 🖥 파이프라인
-
+  <img src="https://github.com/user-attachments/assets/04966e8e-c1fe-47a8-8ac3-5b83ba9926e9" style="width: 100%;">
 
 ## 프로젝트 구조
 - [extract/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract): 뉴스 및 커뮤니티 데이터 추출
