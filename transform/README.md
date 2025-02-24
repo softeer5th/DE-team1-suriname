@@ -34,6 +34,13 @@
 - Caching을 활용해 Lazy Evaluation 때문에 발생하는 중복 API 호출을 개선했습니다.
 - 필요없는 컬럼을 filter후 작업 하여 처리해야하는 데이터양을 줄였습니다.
 - API 호출 시 Partition별로 Multithreading을 적용해 호출 시간을 개선했습니다.
+### Trouble Shooting
+- 외부 API 호출 문제
+  - 초기에 GPT API를 호출 시 빠르게 완료하기 위해 Multithreading을 적용하였는데 많은 스레드를 만들어 호출시 block 당했습니다.
+  - 때문에 이를 해결하기 위해 스레드의 수를 5개로 제한하고 추후 API 호출 실패 시 데이터 변환의 견고함을 유지하기 위해 Gemini API를 추가로 구현했습니다.
+- Encoding 문제
+  - 로컬에서 실행하는 환경과 달리 Airflow가 작업을 관리하게 되면서 한글을 포함한 변수에 대해 잘 동작하지 않았습니다.
+  - 로컬 환경과 달리 Airflow에서는 기본적으로 모든 변수를 문자열로 전달하게 되면서 EMR 코드 상에서 사용하기 위해서는 base64, json에 기반한 decoding을 적용해야했습니다.
 ### runner_emr.py
     로컬에 존재하는 EMR Script를 지정한 S3에 업로드 후 Spark Job을 EMR Serverless에 제출하는 코드입니다
     EMR 환경에서 동작확인을 쉽게 할 수 있습니다
@@ -54,4 +61,3 @@
     S3 이벤트에 의해 크롤러의 개수만큼 호출된 람다가 각각 EMR에 작업을 제출해 같은 데이터에 대해 여러번 작업이 제출 되는 상황이 발생했습니다.
     이를 해결하기 위해서는 하나의 람다가 확인하고 있을 때 Block-Release 구현을 해주어햐 했습니다.
     또한 크롤러를 추가구현할 때마다 trigger lambda를 추가로 수정해야하는 불편함이 발생해 관리하는것이 어렵다고 여겨 Airflow로 전환하게 되었습니다.
-  - 
