@@ -1,9 +1,9 @@
 # Extract
-뉴스와 커뮤니티에서 크롤링 합니다.
+뉴스와 커뮤니티를 크롤링 합니다. 뉴스 크롤러는 1시간 배치로 실행되고, 커뮤티니 크롤러는 뉴스 데이터를 통해 구한 통계값이 임계치를 넘은 경우 뉴스 파이프라인 다음으로 실행됩니다.
 
 ## 폴더 구조
-- [community/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract/community/): 2개의 커뮤니티에서 데이터를 추출하는 파일들 입니다.
-- [news/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract/news/): 5개의 뉴스사에서 데이터를 추출하는 파일들 입니다.
+- [community/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract/community/) : 2개의 커뮤니티에서 데이터를 추출하는 파일들 입니다.
+- [news/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract/news/) : 5개의 뉴스사에서 데이터를 추출하는 파일들 입니다.
 
 ## 데이터 추출하기
 - 커뮤니티와 뉴스 크롤러 모두 AWS Lambda 환경에서 실행됩니다. 각 사이트마다 하나의 Lambda 환경을 사용하게 됩니다. 따라서 2개의 커뮤니티와 4개의 뉴스사를 크롤링 하기 때문에 총 6개의 Lambda 환경이 사용됩니다. 
@@ -31,7 +31,7 @@
 
 ## Trouble Shooting
 ### Lambda 환경에서의 동적 크롤링
-- Lambda에서는 각종 라이브러리를 설치해주기 위해서 Layer를 사용하는데 Layer의 용량이 정해져있었습니다. 하지만 동적 크롤링을 위해 Selenium 및 Chrome driver를 설치해주게 될 경우 Layer의 용량이 너무 커져 등록할 수 없는 문제가 발생하였습니다.
+- Lambda에서는 각종 라이브러리를 설치해주기 위해서 Layer를 사용하는데 Layer의 최대 용량이 정해져있었습니다. 하지만 동적 크롤링을 위해 Selenium 및 Chrome driver를 설치해주게 될 경우 Layer의 용량이 너무 커져 등록할 수 없는 문제가 발생하였습니다.
 - 이를 해결하기 위해 Docker로 실행 환경 및 코드를 담은 이미지를 만들어 ECR에 업로드하고 Lambda는 이러한 도커 이미지를 바탕으로 실행 환경을 만들도록 구현하였습니다.
 
 ### EventBridge -> S3 Notification -> Airflow
