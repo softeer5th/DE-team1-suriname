@@ -2,7 +2,7 @@
 - 이슈가 발생할 경우 이슈대응팀에게 슬랙 안내 메시지를 전송합니다.
 
 
-- Airflow Task에서 오류가 발생할 경우 개발팀에게 슬랙 안내 메시지를 전송합니다.
+- Airflow Task에서 오류가 발생할 경우 개발팀에게 슬랙 안내 메시지를 전송합니다. 빠른 오류 대응을 통해 파이프라인의 가용성을 높이고자 하였습니다.
 
 ## 폴더 구조
 - [slack_alert/](https://github.com/softeer5th/DE-team1-suriname/tree/main/sns/slack_alert.py/) : 이슈가 발생할 경우 이슈대응팀에게 슬랙 메시지를 전송하는 파일입니다. 
