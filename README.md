@@ -7,7 +7,7 @@
 정확하게 파악하기 위한 모니터링 및 알림 서비스입니다.
 ```
 ## 📹 시연 영상
-- [Youtube Link](https://www.youtube.com/@KiaKorea)
+- [Youtube Link](https://www.youtube.com/watch?v=EK1W47P1QxY)
 
 ## ✨ 기능
 - `이슈 주의도`
