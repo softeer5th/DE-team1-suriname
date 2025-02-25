@@ -31,15 +31,15 @@
       <img src="https://github.com/user-attachments/assets/54650c0a-f1c6-4ae1-8b6b-d88d8f4b9b8d" style="width: 100%;">
     </td>
     <td style="width: 50%; text-align: center;">
-      <img src="https://github.com/user-attachments/assets/b4220447-790f-4b1b-9d83-2ea9095465e0" style="width: 100%;">
+      <img src="https://github.com/user-attachments/assets/ccc40dcc-0344-4aa1-9d8a-ed7ea2d319bc" style="width: 100%;">
     </td>
   </tr>
   <tr>
-    <td style="width: 50%; vertical-align: top; text-align: center;">
-      슬랙 알림
+    <td style="width: 50%;">
+      <p align="center">슬랙 알림</p>
     </td>
-        <td style="width: 50%; vertical-align: top; text-align: center;">
-      대시보드
+    <td style="width: 50%;">
+      <p align="center">대시보드</p>
     </td>
   </tr>
 </table>
