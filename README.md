@@ -45,7 +45,7 @@
 </table>
 
 ## 🖥 파이프라인
-  <img src="https://github.com/user-attachments/assets/04966e8e-c1fe-47a8-8ac3-5b83ba9926e9" style="width: 100%;">
+  <img src="https://github.com/user-attachments/assets/c4b032a4-d829-41e2-b72d-d2326a85d1f3" style="width: 100%;">
 
 ## 프로젝트 구조
 - [extract/](https://github.com/softeer5th/DE-team1-suriname/tree/main/extract): 뉴스 및 커뮤니티 데이터 추출
