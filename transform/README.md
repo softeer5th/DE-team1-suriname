@@ -35,7 +35,7 @@
   - `ISSUE_LIST`: 이슈라고 선정된 딕셔너리
 #### 작업 흐름
 <div style="text-align: center;">
-    <img style="width: 80%; height: auto;" alt="Image" src="https://github.com/user-attachments/assets/70a970a7-6be1-432e-b787-6e414b9af6f6" />
+    <img style="width: 80%; height: auto;" alt="Image" src="https://github.com/user-attachments/assets/3528d811-0b06-4b78-93bb-4418756f47db" />
 </div>   
 
 ### EMR 최적화
